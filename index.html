@@ -174,6 +174,7 @@ textarea.area{border:0;background:transparent;width:100%;min-height:110px;resize
 
 /* Lista */
 .item .t b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .t .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .item .v b{display:block;color:var(--label);font-weight:600}
 .item .v span{font-size:15px}
 .empty{text-align:center;padding:48px 24px;color:var(--label2);font-size:15px}
@@ -197,6 +198,14 @@ textarea.area{border:0;background:transparent;width:100%;min-height:110px;resize
 body.typing .tabbar,body.typing .acc{display:none}
 
 .toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 12px);transform:translateX(-50%);z-index:60;background:var(--glass);-webkit-backdrop-filter:blur(26px) saturate(190%);backdrop-filter:blur(26px) saturate(190%);border:.5px solid var(--glass-brd);box-shadow:var(--shadow);padding:12px 20px;border-radius:100px;font-size:15px;font-weight:600;max-width:calc(100% - 32px);text-align:center}
+.swipe{position:relative;overflow:hidden}
+.swipe+.swipe .item::before{content:"";position:absolute;top:0;left:16px;right:0;height:1px;transform:scaleY(.5);transform-origin:top;background:var(--sep)}
+.swipe .item{background:var(--card);transition:transform .25s ease;position:relative;z-index:1}
+.swipe.open .item{transform:translateX(-96px)}
+.swipe-del{position:absolute;top:0;right:0;bottom:0;width:96px;border:0;background:var(--red);color:#fff;font-weight:600;font-size:16px}
+.delbtn{border:0;background:var(--red);color:#fff;border-radius:100px;padding:8px 14px;font-size:15px;font-weight:600;flex:none}
+.toast.act{display:flex;align-items:center;gap:14px;padding:8px 8px 8px 20px}
+.toast.act button{border:0;background:var(--blue);color:#fff;border-radius:100px;padding:8px 14px;font-weight:600;font-size:15px}
 .hidden-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 @media (max-width:374px){.medh,.med{grid-template-columns:minmax(0,1fr) 10px minmax(0,1fr) 10px 40px 64px 28px}.large h1{font-size:30px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -208,7 +217,7 @@ body.typing .tabbar,body.typing .acc{display:none}
 <script>
 (function(){
 "use strict";
-const VERSION='1.0';
+const VERSION='1.1';
 const $app=document.getElementById('app');
 const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
 const clone=x=>JSON.parse(JSON.stringify(x));
@@ -219,6 +228,7 @@ function num(v){
   for(const p of parts){const x=parseFloat(p); if(isFinite(x))t+=x;}
   return t;
 }
+function fmtMoney(v){const d=String(v==null?'':v).replace(/\D/g,''); return d?Number(d).toLocaleString('es-AR'):'';}
 function plata(v){if(v==null)return 0; if(typeof v==='number')return v; const x=parseFloat(String(v).replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.')); return isFinite(x)?x:0;}
 const f2=n=>(Math.round(n*100)/100).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:2});
 const $=n=>'$'+Math.round(n).toLocaleString('es-AR');
@@ -374,10 +384,14 @@ function out(el,fn){outs.push([el,fn]); fn(el); return el;}
 function refresh(){outs.forEach(([el,fn])=>fn(el));}
 function inp(obj,key,o){
   o=o||{};
-  const el=h('input',{class:o.cls||'box',type:'text',inputmode:o.mode||'decimal',enterkeyhint:'next',placeholder:o.ph||'',value:obj[key]==null?'':String(obj[key]),id:(o.id||obj.id||'x')+'-'+key,autocomplete:'off',autocorrect:o.mode==='text'?'on':'off','aria-label':o.label||o.ph||key});
+  if(o.money)o.mode='numeric';
+  const init=obj[key]==null?'':(o.money?fmtMoney(obj[key]):String(obj[key]));
+  const el=h('input',{class:o.cls||'box',type:'text',inputmode:o.mode||'decimal',enterkeyhint:'next',placeholder:o.ph||'',value:init,id:(o.id||obj.id||'x')+'-'+key,autocomplete:'off',autocorrect:o.mode==='text'?'on':'off','aria-label':o.label||o.ph||key});
   if(o.list)el.setAttribute('list',o.list);
   if(o.mode==='text')el.setAttribute('autocapitalize','sentences');
-  el.addEventListener('input',()=>{obj[key]=el.value; (o.cfg?touchCfg:touch)(false); o.onin&&o.onin(el.value);});
+  el.addEventListener('input',()=>{
+    if(o.money){const f=fmtMoney(el.value); if(f!==el.value){el.value=f; try{el.setSelectionRange(f.length,f.length);}catch(e){}}}
+    obj[key]=el.value; (o.cfg?touchCfg:touch)(false); o.onin&&o.onin(el.value);});
   if(o.onchange)el.addEventListener('change',()=>o.onchange(el.value));
   return el;
 }
@@ -387,6 +401,8 @@ const sec=(title,kids,foot,right)=>h('div',{class:'sec'},title?h('div',{class:'s
 const cell=(...k)=>h('div',{class:'cell'},...k);
 const kv=(k,v,cls)=>h('div',{class:'cell kv '+(cls||'')},h('span',{class:'t'},k),h('span',{class:'v num'},v));
 let toastT;
+function toastAction(msg,label,fn){document.querySelectorAll('.toast').forEach(e=>e.remove()); const t=h('div',{class:'toast act',role:'status'},h('span',null,msg),h('button',{onclick:()=>{t.remove();fn();}},label)); document.body.appendChild(t); clearTimeout(toastT); toastT=setTimeout(()=>t.remove(),6000);}
+function eliminar(b){const i=list.indexOf(b); if(i<0)return; list.splice(i,1); saveNow(); if(S.view!=='lista')go('lista'); else render(); toastAction('Se eliminó “'+(b.cliente||'Sin nombre')+'”','Deshacer',()=>{list.push(b); saveNow(); render();});}
 function toast(msg){document.querySelectorAll('.toast').forEach(e=>e.remove()); const t=h('div',{class:'toast',role:'status'},msg); document.body.appendChild(t); clearTimeout(toastT); toastT=setTimeout(()=>t.remove(),2400);}
 
 document.addEventListener('focusin',e=>{if(e.target.matches('input,textarea'))document.body.classList.add('typing');});
@@ -408,7 +424,9 @@ function large(title,sub){return h('div',{class:'large'},h('h1',null,title),sub?
 /* --- Lista --- */
 function esIOSSafari(){const ua=navigator.userAgent; return /iPhone|iPad|iPod/.test(ua)&&!navigator.standalone&&!window.matchMedia('(display-mode: standalone)').matches;}
 function vLista(){
-  $app.append(nav('Presupuestos',h('button',{class:'gbtn ic','aria-label':'Ajustes',onclick:()=>go('ajustes'),html:I.gear}),h('button',{class:'gbtn ic pro','aria-label':'Nuevo presupuesto',onclick:crear,html:I.plus})));
+  if(!list.length)S.editList=false;
+  $app.append(nav('Presupuestos',h('button',{class:'gbtn ic','aria-label':'Ajustes',onclick:()=>go('ajustes'),html:I.gear}),
+    h('div',{style:'display:flex;gap:8px'},list.length?h('button',{class:'gbtn'+(S.editList?' pro':''),onclick:()=>{S.editList=!S.editList;render();}},S.editList?'Listo':'Editar'):null,S.editList?null:h('button',{class:'gbtn ic pro','aria-label':'Nuevo presupuesto',onclick:crear,html:I.plus}))));
   $app.append(large('Presupuestos',list.length?list.length+(list.length===1?' presupuesto':' presupuestos'):null));
   const m=h('div',{class:'main nobar'}); $app.append(m);
   if(esIOSSafari()&&!meta.hideInstall){
@@ -421,11 +439,22 @@ function vLista(){
   const arr=[...list].sort((a,b)=>(b.actualizado||0)-(a.actualizado||0));
   if(!arr.length){m.append(h('div',{class:'empty'},h('b',null,'Sin presupuestos'),'Tocá + arriba a la derecha y empezá cargando las medidas del primer ambiente.'),h('div',{class:'stack'},h('button',{class:'pbtn',onclick:crear},svg(I.plus),'Nuevo presupuesto'),h('button',{class:'pbtn sec2',onclick:cargarEjemplo},'Ver un ejemplo')));return;}
   m.append(sec(null,arr.map(b=>{const c=calc(b); const ambs=b.ambientes.map(a=>a.nombre).filter(Boolean).join(', ');
-    return h('button',{class:'cell tap item',onclick:()=>go('editor',{cur:b.id,tab:'medidas'})},
-      h('div',{class:'t'},h('b',null,b.cliente||'Sin nombre'),h('span',{class:'s'},fechaC(b.actualizado||b.creado)+(ambs?' · '+ambs:''))),
-      h('div',{class:'v num'},h('b',null,$(c.total)),h('span',null,f2(c.m2)+' m²')),svg(I.chev));})));
+    const info=[h('div',{class:'t'},h('b',null,b.cliente||'Sin nombre'),h('span',{class:'s'},fechaC(b.actualizado||b.creado)+(ambs?' · '+ambs:''))),
+      h('div',{class:'v num'},h('b',null,$(c.total)),h('span',null,f2(c.m2)+' m²'))];
+    if(S.editList)return h('div',{class:'cell item'},info[0],h('button',{class:'delbtn',onclick:()=>eliminar(b)},'Eliminar'));
+    const row=h('button',{class:'cell tap item',onclick:()=>{if(row._swiped)return; if(wrap.classList.contains('open')){wrap.classList.remove('open');return;} go('editor',{cur:b.id,tab:'medidas'});}},...info,svg(I.chev));
+    const wrap=h('div',{class:'swipe'},h('button',{class:'swipe-del',onclick:()=>eliminar(b)},'Eliminar'),row);
+    swipeable(wrap,row); return wrap;}),S.editList?'Tocá Eliminar en el que quieras borrar. Si te equivocás, tocá Deshacer.':'Para borrar: deslizá un presupuesto hacia la izquierda o tocá Editar.'));
 }
-const EJEMPLO={"id": "ejemplo", "creado": 1790722800000, "actualizado": 1790722800000, "cliente": "EJEMPLO · Paula (Picoy)", "direccion": "", "dias": "5 a 6", "ambientes": [{"id": "e0", "nombre": "Entrada", "sups": [{"id": "e2", "nombre": "Paredes", "producto": "latex-int", "manos": 2, "unidad": "m2", "precio": "", "recargo": "", "medidas": [{"id": "e1", "alto": "2,54", "ancho": "6,10", "cant": "1", "restar": false}]}, {"id": "e4", "nombre": "Cielorraso", "producto": "cielo", "manos": 2, "unidad": "m2", "precio": "", "recargo": "15", "medidas": [{"id": "e3", "alto": "1,10", "ancho": "3,30", "cant": "1", "restar": false}]}]}, {"id": "e5", "nombre": "Living", "sups": [{"id": "e11", "nombre": "Paredes", "producto": "latex-int", "manos": 2, "unidad": "m2", "precio": "", "recargo": "", "medidas": [{"id": "e6", "alto": "2,54", "ancho": "7,80", "cant": "1", "restar": false}, {"id": "e7", "alto": "2,05", "ancho": "0,74", "cant": "2", "restar": true}, {"id": "e8", "alto": "2,54", "ancho": "6,70", "cant": "1", "restar": false}, {"id": "e9", "alto": "0,60", "ancho": "3", "cant": "1", "restar": false}, {"id": "e10", "alto": "2,20", "ancho": "0,75", "cant": "1", "restar": false}]}, {"id": "e13", "nombre": "Cielorraso", "producto": "cielo", "manos": 2, "unidad": "m2", "precio": "", "recargo": "15", "medidas": [{"id": "e12", "alto": "3", "ancho": "7,80", "cant": "1", "restar": false}]}]}, {"id": "e14", "nombre": "Habitación bebé", "sups": [{"id": "e19", "nombre": "Paredes", "producto": "latex-int", "manos": 2, "unidad": "m2", "precio": "", "recargo": "", "medidas": [{"id": "e15", "alto": "2,54", "ancho": "3,50", "cant": "2", "restar": false}, {"id": "e16", "alto": "0,57", "ancho": "2,83", "cant": "1", "restar": false}, {"id": "e17", "alto": "0,82", "ancho": "0,50", "cant": "1", "restar": false}, {"id": "e18", "alto": "2,90", "ancho": "0,60", "cant": "1", "restar": false}]}, {"id": "e21", "nombre": "Cielorraso", "producto": "cielo", "manos": 2, "unidad": "m2", "precio": "", "recargo": "15", "medidas": [{"id": "e20", "alto": "3", "ancho": "2,90", "cant": "1", "restar": false}]}]}, {"id": "e22", "nombre": "Toda la casa", "sups": [{"id": "e24", "nombre": "Zócalos", "producto": "esmalte-agua", "manos": 2, "unidad": "ml", "precio": "", "recargo": "", "medidas": [{"id": "e23", "alto": "59", "ancho": "", "cant": "1", "restar": false}]}]}], "muebles": {"on": true, "pct": 8}, "altura": {"on": false, "pct": 15}, "reparacion": {"nivel": 0, "pct": 0}, "extras": [], "diasExtra": {"cant": "", "valor": ""}, "garage": {"cant": "", "valor": ""}, "comida": {"cant": "", "valor": ""}, "ayudante": {"cant": "", "valor": "", "cobrar": true}, "redondeo": 1000, "materiales": {"Rodillo antigota 22 cm": 1, "Pincel N°15": 1, "Batea / cubeta": 1, "Cinta de papel 24 mm": 2, "Cartón rollo (pisos)": 1}, "herramientas": {"Escalera": true, "Metro": true}, "aclaraciones": "Materiales a cargo del cliente (no incluidos en la mano de obra).\nSe reserva con seña del 40% de la mano de obra.\nEl presupuesto es en base al estado actual. No incluye arreglos mayores (humedad, revoque).\nCualquier extra se avisa antes.", "img": {"precios": false, "materiales": true, "aclaraciones": true, "oscuro": false}, "notas": "Presupuesto de ejemplo con tus medidas de Paula. Borralo cuando quieras (abajo de todo en Resumen)."};
+function swipeable(wrap,row){
+  let x0=0,y0=0,dx=0,drag=null;
+  row.addEventListener('touchstart',e=>{const t=e.touches[0]; x0=t.clientX; y0=t.clientY; drag=null; dx=0; document.querySelectorAll('.swipe.open').forEach(w=>{if(w!==wrap)w.classList.remove('open');});},{passive:true});
+  row.addEventListener('touchmove',e=>{const t=e.touches[0],mx=t.clientX-x0,my=t.clientY-y0;
+    if(drag===null){if(Math.abs(mx)>10&&Math.abs(mx)>Math.abs(my)*1.2)drag=true; else if(Math.abs(my)>10)drag=false;}
+    if(drag){dx=Math.min(0,Math.max(-130,(wrap.classList.contains('open')?-96:0)+mx)); row.style.transition='none'; row.style.transform='translateX('+dx+'px)';}},{passive:true});
+  row.addEventListener('touchend',()=>{if(!drag)return; row.style.transition=''; row.style.transform=''; wrap.classList.toggle('open',dx<-48); row._swiped=true; setTimeout(()=>{row._swiped=false;},80);});
+}
+const EJEMPLO={"id": "ejemplo", "creado": 1790722800000, "actualizado": 1790722800000, "cliente": "EJEMPLO · Paula (Picoy)", "direccion": "", "dias": "5 a 6", "ambientes": [{"id": "e0", "nombre": "Entrada", "sups": [{"id": "e2", "nombre": "Paredes", "producto": "latex-int", "manos": 2, "unidad": "m2", "precio": "", "recargo": "", "medidas": [{"id": "e1", "alto": "2,54", "ancho": "6,10", "cant": "1", "restar": false}]}, {"id": "e4", "nombre": "Cielorraso", "producto": "cielo", "manos": 2, "unidad": "m2", "precio": "", "recargo": "15", "medidas": [{"id": "e3", "alto": "1,10", "ancho": "3,30", "cant": "1", "restar": false}]}]}, {"id": "e5", "nombre": "Living", "sups": [{"id": "e11", "nombre": "Paredes", "producto": "latex-int", "manos": 2, "unidad": "m2", "precio": "", "recargo": "", "medidas": [{"id": "e6", "alto": "2,54", "ancho": "7,80", "cant": "1", "restar": false}, {"id": "e7", "alto": "2,05", "ancho": "0,74", "cant": "2", "restar": true}, {"id": "e8", "alto": "2,54", "ancho": "6,70", "cant": "1", "restar": false}, {"id": "e9", "alto": "0,60", "ancho": "3", "cant": "1", "restar": false}, {"id": "e10", "alto": "2,20", "ancho": "0,75", "cant": "1", "restar": false}]}, {"id": "e13", "nombre": "Cielorraso", "producto": "cielo", "manos": 2, "unidad": "m2", "precio": "", "recargo": "15", "medidas": [{"id": "e12", "alto": "3", "ancho": "7,80", "cant": "1", "restar": false}]}]}, {"id": "e14", "nombre": "Habitación bebé", "sups": [{"id": "e19", "nombre": "Paredes", "producto": "latex-int", "manos": 2, "unidad": "m2", "precio": "", "recargo": "", "medidas": [{"id": "e15", "alto": "2,54", "ancho": "3,50", "cant": "2", "restar": false}, {"id": "e16", "alto": "0,57", "ancho": "2,83", "cant": "1", "restar": false}, {"id": "e17", "alto": "0,82", "ancho": "0,50", "cant": "1", "restar": false}, {"id": "e18", "alto": "2,90", "ancho": "0,60", "cant": "1", "restar": false}]}, {"id": "e21", "nombre": "Cielorraso", "producto": "cielo", "manos": 2, "unidad": "m2", "precio": "", "recargo": "15", "medidas": [{"id": "e20", "alto": "3", "ancho": "2,90", "cant": "1", "restar": false}]}]}, {"id": "e22", "nombre": "Toda la casa", "sups": [{"id": "e24", "nombre": "Zócalos", "producto": "esmalte-agua", "manos": 2, "unidad": "ml", "precio": "", "recargo": "", "medidas": [{"id": "e23", "alto": "59", "ancho": "", "cant": "1", "restar": false}]}]}], "muebles": {"on": true, "pct": 8}, "altura": {"on": false, "pct": 15}, "reparacion": {"nivel": 0, "pct": 0}, "extras": [], "diasExtra": {"cant": "", "valor": ""}, "garage": {"cant": "", "valor": ""}, "comida": {"cant": "", "valor": ""}, "ayudante": {"cant": "", "valor": "", "cobrar": true}, "redondeo": 1000, "materiales": {"Rodillo antigota 22 cm": 1, "Pincel N°15": 1, "Batea / cubeta": 1, "Cinta de papel 24 mm": 2, "Cartón rollo (pisos)": 1}, "herramientas": {"Escalera": true, "Metro": true}, "aclaraciones": "Materiales a cargo del cliente (no incluidos en la mano de obra).\nSe reserva con seña del 40% de la mano de obra.\nEl presupuesto es en base al estado actual. No incluye arreglos mayores (humedad, revoque).\nCualquier extra se avisa antes.", "img": {"precios": false, "materiales": true, "aclaraciones": true, "oscuro": false}, "notas": "Presupuesto de ejemplo con tus medidas de Paula. Borralo cuando quieras."};
 function cargarEjemplo(){const b=norm(clone(EJEMPLO)); b.id=uid(); b.numero=meta.nextNum++; b.creado=b.actualizado=Date.now(); list.push(b); saveNow(); go('editor',{cur:b.id,tab:'resumen'});}
 function crear(){const b=nuevo(); b.numero=meta.nextNum++; list.push(b); saveNow(); focusId=b.id+'-cliente'; go('editor',{cur:b.id,tab:'medidas'});}
 
@@ -494,7 +523,7 @@ function supBlock(a,s,si){
     h('button',{onclick:()=>{const x=nuevaMed(); s.medidas.push(x); focusId=x.id+'-alto'; touch(true);}},'+ Medida'),
     !ml?h('button',{class:'red',onclick:()=>{const x=nuevaMed(true); s.medidas.push(x); focusId=x.id+'-alto'; touch(true);}},'− Restar puerta o ventana'):null)));
   g.append(cell(h('div',{class:'price'},
-      h('label',{for:s.id+'-precio'},ml?'$ ml':'$ m²'),out(inp(s,'precio',{label:'Precio por unidad',mode:'numeric'}),el=>{el.placeholder=Math.round(precioAuto(s)).toLocaleString('es-AR');}),
+      h('label',{for:s.id+'-precio'},ml?'$ ml':'$ m²'),out(inp(s,'precio',{label:'Precio por unidad',money:true}),el=>{el.placeholder=Math.round(precioAuto(s)).toLocaleString('es-AR');}),
       h('label',{for:s.id+'-recargo'},'+%'),inp(s,'recargo',{ph:'0',cls:'box pc',label:'Recargo porcentaje',mode:'numeric'})),
     out(h('div',{class:'subt'}),el=>{const q=supQty(s); el.innerHTML=''; el.append(h('b',null,f2(q)+(ml?' ml':' m²')),h('span',null,$(q*precioUnit(s)*(1+num(s.recargo)/100))));})));
   return g;
@@ -511,34 +540,39 @@ function tCobro(m,b){
   rep.push(recRow('Trabajo en altura','Andamio, escalera larga',b.altura.on,()=>{b.altura.on=!b.altura.on;touch(true);},b.altura,'Trabajo'));
   m.append(sec('Recargos',rep,'El porcentaje se calcula sobre la mano de obra por m².'));
 
-  const ex=b.extras.map((e,i)=>cell(inp(e,'desc',{cls:'tf left',mode:'text',ph:'Descripción',label:'Descripción'}),inp(e,'monto',{cls:'box r',ph:'$',label:'Monto',mode:'numeric'}),h('button',{class:'xbtn red','aria-label':'Borrar',html:I.minus,onclick:()=>{b.extras.splice(i,1);touch(true);}})));
+  const ex=b.extras.map((e,i)=>cell(inp(e,'desc',{cls:'tf left',mode:'text',ph:'Descripción',label:'Descripción'}),inp(e,'monto',{cls:'box r',ph:'$',label:'Monto',money:true}),h('button',{class:'xbtn red','aria-label':'Borrar',html:I.minus,onclick:()=>{b.extras.splice(i,1);touch(true);}})));
   if(!ex.length)ex.push(cell(h('span',{class:'t',style:'color:var(--label2)'},'Hidrolavado, ladrillos, rejas, toldos…')));
   const exSec=sec('Trabajos extra',ex); exSec.append(h('div',{class:'chips'},['Hidrolavado','Ladrillos','Rejas en altura','Sacar y poner toldo','Otro'].map(n=>h('button',{class:'chip',onclick:()=>{const e={id:uid(),desc:n==='Otro'?'':n,monto:''}; b.extras.push(e); focusId=e.id+(n==='Otro'?'-desc':'-monto'); touch(true);}},'+ '+n))));
   m.append(exSec);
 
-  const g=(name,o,k)=>h('div',{class:'cell col'},h('div',{style:'display:flex;justify-content:space-between;gap:10px'},h('span',null,name),out(h('span',{class:'num',style:'font-weight:600'}),el=>{const v=num(o.cant)*plata(o.valor); el.textContent=v?$(v):'';})),
-    h('div',{class:'gl'},inp(o,'valor',{ph:'$ por día',mode:'numeric',label:name+' valor por día',id:b.id+k}),h('span',{class:'x'},'×'),inp(o,'cant',{ph:'Días',label:name+' días',id:b.id+k})));
+  const g=(name,o,k)=>h('div',{class:'cell col'},h('div',{style:'display:flex;justify-content:space-between;gap:10px'},h('span',null,name),out(h('span',{class:'num',style:'font-weight:600'}),el=>{const v=num(o.cant)*plata(o.valor); el.textContent=v?(o===b.ayudante&&!b.ayudante.cobrar?$(v):'+'+$(v)):'';})),
+    h('div',{class:'gl'},inp(o,'valor',{ph:'$ por día',money:true,label:name+' valor por día',id:b.id+k}),h('span',{class:'x'},'×'),inp(o,'cant',{ph:'Días',label:name+' días',id:b.id+k})));
   m.append(sec('Días y gastos',[
     cell(h('label',{class:'t',for:b.id+'-dias'},'Días de trabajo'),inp(b,'dias',{cls:'tf',mode:'text',ph:'Ej: 5 a 6'})),
     g('Días extra cobrados',b.diasExtra,'de'),g('Garage',b.garage,'ga'),g('Comida',b.comida,'co'),g('Ayudante',b.ayudante,'ay'),
     cell(h('div',{class:'t'},'Cobrarle el ayudante al cliente',h('span',{class:'s'},b.ayudante.cobrar?'Se suma al total':'Lo pagás vos, no se suma')),sw(b.ayudante.cobrar,()=>{b.ayudante.cobrar=!b.ayudante.cobrar;touch(true);},'Cobrar ayudante'))],
-    'Garage y comida se suman al total del cliente y se descuentan de lo que te queda.'));
+    'Días extra, garage y comida se suman al total del cliente. Más abajo ves cuánto te queda a vos después de pagar garage, comida y ayudante.'));
   m.append(sec('Redondeo',[h('div',{class:'cell'},seg([[0,'Sin redondeo'],[1000,'$1.000'],[10000,'$10.000']],b.redondeo,v=>{b.redondeo=v;touch(true);},'Redondeo','full'))]));
-  m.append(h('div',{class:'sec'},h('div',{class:'sec-h'},'Total'),out(h('div',{class:'group'}),el=>totales(el,b))));
+  m.append(out(h('div'),el=>totales(el,b)));
 }
 function totales(el,b){
   const c=calc(b); el.innerHTML='';
-  el.append(kv('Mano de obra por m²',$(c.base)));
-  c.rec.forEach(r=>el.append(kv(r[0],'+'+$(r[1]))));
-  c.extras.forEach(r=>el.append(kv(r[0],'+'+$(r[1]))));
-  c.gastos.forEach(r=>el.append(kv(r[0],'+'+$(r[1]))));
-  if(Math.round(c.total)!==Math.round(c.raw))el.append(kv('Redondeo','+'+$(c.total-c.raw),'minus'));
-  el.append(kv('Total al cliente',$(c.total),'tot'));
+  const g1=h('div',{class:'group'});
+  g1.append(kv('Mano de obra por m²',$(c.base)));
+  c.rec.forEach(r=>g1.append(kv(r[0],'+'+$(r[1]))));
+  c.extras.forEach(r=>g1.append(kv(r[0],'+'+$(r[1]))));
+  c.gastos.forEach(r=>g1.append(kv(r[0],'+'+$(r[1]))));
+  if(Math.round(c.total)!==Math.round(c.raw))g1.append(kv('Redondeo','+'+$(c.total-c.raw),'minus'));
+  g1.append(kv('Total al cliente',$(c.total),'tot'));
+  el.append(h('div',{class:'sec'},h('div',{class:'sec-h'},'Lo que cobrás'),g1));
   if(c.ay||c.ga||c.co){
-    if(c.ay)el.append(kv('Pago al ayudante','−'+$(c.ay),'minus'));
-    if(c.ga)el.append(kv('Garage','−'+$(c.ga),'minus'));
-    if(c.co)el.append(kv('Comida','−'+$(c.co),'minus'));
-    el.append(kv('Te queda a vos',$(c.neto),'good'));
+    const g2=h('div',{class:'group'});
+    g2.append(kv('Cobrás',$(c.total)));
+    if(c.ay)g2.append(kv('Le pagás al ayudante','−'+$(c.ay),'minus'));
+    if(c.ga)g2.append(kv('Pagás el garage','−'+$(c.ga),'minus'));
+    if(c.co)g2.append(kv('Pagás la comida','−'+$(c.co),'minus'));
+    g2.append(kv('Te queda a vos',$(c.neto),'good'));
+    el.append(h('div',{class:'sec'},h('div',{class:'sec-h'},'Lo que te queda'),g2,h('div',{class:'sec-f'},'Esto es solo para vos: el cliente paga el total de arriba.')));
   }
 }
 
@@ -579,14 +613,13 @@ function tResumen(m,b){
   if(!amb.length)amb.push(cell(h('span',{class:'t',style:'color:var(--label2)'},'Todavía no hay medidas cargadas.')));
   m.append(sec('Por ambiente',amb));
   if(c.porTipo.length)m.append(sec('Por tipo',c.porTipo.map(t=>cell(h('span',{class:'t'},t.nombre),h('span',{class:'v num'},f2(t.q)+(t.unidad==='ml'?' ml':' m²')),h('span',{class:'v strong num',style:'min-width:96px'},$(t.sub))))));
-  const tg=h('div',{class:'group'}); totales(tg,b);
-  m.append(h('div',{class:'sec'},h('div',{class:'sec-h'},'Cobro'),tg));
+  const tg=h('div'); totales(tg,b); m.append(tg);
 
   const nt=h('textarea',{class:'area',id:b.id+'-notas','aria-label':'Notas',placeholder:'Cosas para acordarte de esta obra'}); nt.value=b.notas||''; nt.addEventListener('input',()=>{b.notas=nt.value;touch(false);});
   m.append(sec('Notas mías',[h('div',{class:'cell'},nt)]));
   m.append(sec(null,[
     h('button',{class:'cell tap link',onclick:()=>{const n=norm(clone(b)); n.id=uid(); n.numero=meta.nextNum++; n.cliente=(b.cliente||'Presupuesto')+' (copia)'; n.creado=n.actualizado=Date.now(); n.ambientes.forEach(a=>{a.id=uid();a.sups.forEach(s=>{s.id=uid();s.medidas.forEach(x=>x.id=uid());});}); list.push(n); saveNow(); toast('Copia creada'); go('editor',{cur:n.id,tab:'medidas'});}},'Duplicar presupuesto'),
-    S.confirmDel?h('button',{class:'cell tap link red',onclick:()=>{list=list.filter(x=>x.id!==b.id); saveNow(); toast('Presupuesto eliminado'); go('lista');}},'Tocá de nuevo para eliminar'):
+    S.confirmDel?h('button',{class:'cell tap link red',onclick:()=>eliminar(b)},'Tocá de nuevo para eliminar'):
       h('button',{class:'cell tap link red',onclick:()=>{S.confirmDel=true;render();}},'Eliminar presupuesto')]));
 }
 
@@ -770,8 +803,8 @@ function vAjustes(){
   const F=(lab,key,o)=>cell(h('label',{class:'t',for:'cfg-'+key},lab),inp(cfg,key,Object.assign({cfg:true,id:'cfg',cls:'box r'},o||{})));
   m.append(sec('Tus datos',[F('Nombre','nombre',{mode:'text',ph:'Tu nombre',cls:'tf'}),F('Teléfono','telefono',{mode:'tel',ph:'Opcional',cls:'tf'})],'Aparecen arriba del presupuesto que le mandás al cliente.'));
   const rep=cell(h('span',{class:'t'},'% reparaciones',h('span',{class:'s'},'Leve · media · mucha')),...[1,2,3].map(i=>{const e=h('input',{class:'box pc',inputmode:'numeric',id:'cfg-rep'+i,value:String(cfg.recRep[i]??''),'aria-label':'Reparaciones '+NIVELES[i]}); e.addEventListener('input',()=>{cfg.recRep[i]=num(e.value);touchCfg(false);}); return e;}));
-  m.append(sec('Precios',[F('m² con 2 manos','precioM2',{mode:'numeric'}),F('Metro lineal zócalo','precioMl',{mode:'numeric'}),F('% cielorraso','recCielo',{mode:'numeric'}),F('% mover muebles','recMuebles',{mode:'numeric'}),F('% trabajo en altura','recAltura',{mode:'numeric'}),rep],'Con 1, 3 o 4 manos el precio se ajusta solo en proporción. En cada superficie podés poner otro precio a mano.'));
-  m.append(sec('Valores por día',[F('Garage','garage',{mode:'numeric'}),F('Comida','comida',{mode:'numeric'}),F('Ayudante','ayudante',{mode:'numeric'}),F('Día extra','diaExtra',{mode:'numeric'})],'Se cargan solos en cada presupuesto nuevo.'));
+  m.append(sec('Precios',[F('m² con 2 manos','precioM2',{money:true}),F('Metro lineal zócalo','precioMl',{money:true}),F('% cielorraso','recCielo',{mode:'numeric'}),F('% mover muebles','recMuebles',{mode:'numeric'}),F('% trabajo en altura','recAltura',{mode:'numeric'}),rep],'Con 1, 3 o 4 manos el precio se ajusta solo en proporción. En cada superficie podés poner otro precio a mano.'));
+  m.append(sec('Valores por día',[F('Garage','garage',{money:true}),F('Comida','comida',{money:true}),F('Ayudante','ayudante',{money:true}),F('Día extra','diaExtra',{money:true})],'Se cargan solos en cada presupuesto nuevo.'));
   const pc=cfg.productos.map((p,i)=>cell(inp(p,'nombre',{mode:'text',cfg:true,id:'p'+i,cls:'tf left',label:'Nombre de la pintura',ph:'Nombre'}),inp(p,'rend',{cfg:true,id:'p'+i,cls:'box pc',label:'Rendimiento m² por litro'}),h('span',{class:'v'},'m²/L'),h('button',{class:'xbtn red','aria-label':'Quitar pintura',html:I.minus,onclick:()=>{if(cfg.productos.length<2)return; cfg.productos.splice(i,1);touchCfg(true);}})));
   pc.push(h('button',{class:'cell tap link',onclick:()=>{cfg.productos.push({id:uid(),nombre:'',rend:12}); focusId='p'+(cfg.productos.length-1)+'-nombre'; touchCfg(true);}},'Agregar pintura'));
   m.append(sec('Pinturas y rendimiento',pc,'Rendimiento: m² que cubre 1 litro en una mano.'));
