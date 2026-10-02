@@ -217,7 +217,8 @@ body.typing .tabbar,body.typing .acc{display:none}
 <script>
 (function(){
 "use strict";
-const VERSION='1.1';
+const VERSION='1.2';
+const SCHEMA=2;
 const $app=document.getElementById('app');
 const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
 const clone=x=>JSON.parse(JSON.stringify(x));
@@ -275,7 +276,7 @@ const DEF_CFG={
   materiales:['Rodillo pelo corto','Rodillo pelo largo (grueso)','Rodillo antigota 22 cm','Rodillo para epoxi','Pincel N°15','Pincel chico','Batea / cubeta','Cinta de papel 24 mm','Cartón rollo (pisos)','Film / plástico protector','Fijador','Enduido','Lija'],
   herramientas:['Escalera','Destornillador (latas)','Taladro cargado','Mezclador para taladro','Espátula','Metro','Secador'],
   garage:0, comida:0, ayudante:0, diaExtra:0,
-  recMuebles:10, recAltura:15, recRep:[0,5,15,25], recCielo:15,
+  recMuebles:10, recAltura:15, recRep:[0,5,15,25], recCielo:15, validezDias:15,
   aclaraciones:'Materiales a cargo del cliente (no incluidos en la mano de obra).\nSe reserva con seña del 40% de la mano de obra.\nEl presupuesto es en base al estado actual. No incluye arreglos mayores (humedad, revoque).\nCualquier extra se avisa antes.'
 };
 let cfg=clone(DEF_CFG);
@@ -285,29 +286,46 @@ const S={view:'lista',cur:null,tab:'medidas',confirmDel:false};
 
 /* ---------- modelo ---------- */
 function nuevaMed(restar){return {id:uid(),alto:'',ancho:'',cant:'1',restar:!!restar};}
-function nuevaSup(nombre,unidad){return {id:uid(),nombre:nombre||'Paredes',producto:(cfg.productos[0]||{}).id||'',manos:2,unidad:unidad||'m2',precio:'',recargo:'',medidas:[nuevaMed()]};}
-function nuevoAmb(n){return {id:uid(),nombre:n,sups:[nuevaSup('Paredes')]};}
+function nuevaSup(nombre,unidad,pinturas){const ps=pinturas||(cur()&&cur().pinturas)||cfg.productos; return {id:uid(),nombre:nombre||'Paredes',producto:(ps[0]||{}).id||'',manos:2,unidad:unidad||'m2',precio:'',recargo:'',medidas:[nuevaMed()]};}
+function nuevoAmb(n,pinturas){return {id:uid(),nombre:n,sups:[nuevaSup('Paredes','m2',pinturas)]};}
+// Copia de los valores de Ajustes que quedan fijos dentro de cada presupuesto
+function foto(c){return {precios:{m2:plata(c.precioM2),ml:plata(c.precioMl)},pinturas:clone(c.productos||[]),materialesLista:clone(c.materiales||[]),herramientasLista:clone(c.herramientas||[]),validez:num(c.validezDias)||15};}
 function nuevo(){
-  return {id:uid(),numero:0,creado:Date.now(),actualizado:Date.now(),cliente:'',direccion:'',dias:'',
-    ambientes:[nuevoAmb('Ambiente 1')],
+  const f=foto(cfg);
+  return Object.assign({id:uid(),numero:0,creado:Date.now(),actualizado:Date.now(),emitido:null,cliente:'',direccion:'',dias:'',
+    ambientes:[nuevoAmb('Ambiente 1',f.pinturas)],
     muebles:{on:false,pct:cfg.recMuebles},altura:{on:false,pct:cfg.recAltura},reparacion:{nivel:0,pct:0},
     extras:[],diasExtra:{cant:'',valor:cfg.diaExtra||''},garage:{cant:'',valor:cfg.garage||''},comida:{cant:'',valor:cfg.comida||''},
     ayudante:{cant:'',valor:cfg.ayudante||'',cobrar:true},redondeo:1000,materiales:{},herramientas:{},
-    aclaraciones:cfg.aclaraciones,img:{precios:false,materiales:true,aclaraciones:true,oscuro:false},notas:''};
+    aclaraciones:cfg.aclaraciones,img:{precios:false,materiales:true,aclaraciones:true,oscuro:false},notas:''},f);
 }
-function norm(b){
-  const d=nuevo(); const o=Object.assign(d,b);
+// Completa lo que falte. Lo que no tenga copia propia se toma de 'base' (los Ajustes de cuando se guardó).
+function norm(b,base){
+  const d=nuevo(); const f=foto(base||cfg);
+  const o=Object.assign(d,b);
+  if(!b.precios||typeof b.precios!=='object')o.precios=f.precios; else o.precios={m2:plata(b.precios.m2),ml:plata(b.precios.ml)};
+  if(!Array.isArray(b.pinturas))o.pinturas=f.pinturas;
+  if(!Array.isArray(b.materialesLista))o.materialesLista=f.materialesLista;
+  if(!Array.isArray(b.herramientasLista))o.herramientasLista=f.herramientasLista;
+  if(!(num(b.validez)>0))o.validez=f.validez;
+  if(!b.emitido)o.emitido=null;
   ['muebles','altura','reparacion','diasExtra','garage','comida','ayudante','img'].forEach(k=>{o[k]=Object.assign({},d[k],b[k]||{});});
   o.ambientes=(o.ambientes||[]).map(a=>({id:a.id||uid(),nombre:a.nombre||'',sups:(a.sups||[]).map(s=>Object.assign(nuevaSup(),s,{medidas:(s.medidas||[]).map(m=>Object.assign(nuevaMed(),m))}))}));
   o.extras=(o.extras||[]).map(e=>Object.assign({id:uid(),desc:'',monto:''},e));
-  o.materiales=o.materiales||{}; o.herramientas=o.herramientas||{};
+  o.materiales=(o.materiales&&typeof o.materiales==='object')?o.materiales:{}; o.herramientas=(o.herramientas&&typeof o.herramientas==='object')?o.herramientas:{};
   return o;
 }
-const prod=id=>cfg.productos.find(p=>p.id===id);
+const prodDe=(b,id)=>(b.pinturas||[]).find(p=>p.id===id);
+// Pinturas para elegir: las del presupuesto y, después, las de Ajustes que no tenga.
+const pinturasOpc=b=>[...b.pinturas,...cfg.productos.filter(p=>!b.pinturas.some(q=>q.id===p.id))];
+function usarPintura(b,id){if(!prodDe(b,id)){const p=cfg.productos.find(x=>x.id===id); if(p)b.pinturas.push(clone(p));}}
+const unicos=a=>[...new Set(a.filter(Boolean))];
+const fechaDoc=b=>b.emitido||Date.now();
+const vence=b=>fechaDoc(b)+(num(b.validez)||15)*864e5;
 const medQty=(s,m)=>num(m.alto)*(s.unidad==='ml'?1:num(m.ancho))*(String(m.cant).trim()===''?1:num(m.cant));
 function supQty(s){let t=0; for(const m of s.medidas){const v=medQty(s,m); t+=m.restar?-v:v;} return Math.max(0,t);}
-function precioAuto(s){return (s.unidad==='ml'?plata(cfg.precioMl):plata(cfg.precioM2))*(num(s.manos)||2)/2;}
-function precioUnit(s){return String(s.precio).trim()!==''?plata(s.precio):precioAuto(s);}
+function precioAuto(b,s){return plata(s.unidad==='ml'?b.precios.ml:b.precios.m2)*(num(s.manos)||2)/2;}
+function precioUnit(b,s){return String(s.precio).trim()!==''?plata(s.precio):precioAuto(b,s);}
 function latas(L){
   if(L<=0)return '';
   const sizes=[20,10,4,1]; let best=null;
@@ -323,9 +341,9 @@ function calc(b){
   for(const a of b.ambientes){
     const A={a,m2:0,ml:0,sub:0,rows:[]};
     for(const s of a.sups){
-      const q=supQty(s),pu=precioUnit(s),sub=q*pu*(1+num(s.recargo)/100);
+      const q=supQty(s),pu=precioUnit(b,s),sub=q*pu*(1+num(s.recargo)/100);
       base+=sub; A.sub+=sub; if(s.unidad==='ml'){ml+=q;A.ml+=q;}else{m2+=q;A.m2+=q;}
-      const p=prod(s.producto);
+      const p=prodDe(b,s.producto);
       if(q>0){
         const k=(p?p.id:'?')+'|'+s.unidad; pp[k]=pp[k]||{p,unidad:s.unidad,q:0,litros:0,manos:new Set()}; pp[k].q+=q; pp[k].manos.add(s.manos);
         if(p&&s.unidad==='m2')pp[k].litros+=q*s.manos/(num(p.rend)||12);
@@ -352,15 +370,44 @@ function calc(b){
 
 /* ---------- guardado en el teléfono ---------- */
 const LS='pintura-presupuestos-v1';
-let saveT;
-function saveNow(){clearTimeout(saveT); try{localStorage.setItem(LS,JSON.stringify({cfg,list,meta}));}catch(e){toast('No se pudo guardar: el teléfono no tiene espacio');}}
+const LS_RESCATE=LS+'-rescate', LS_PREVIO=LS+'-antes-v';
+let saveT, bloqueado=false, rescate=null;
+function datos(){return {schemaVersion:SCHEMA,cfg,list,meta};}
+function saveNow(){clearTimeout(saveT); if(bloqueado)return; try{localStorage.setItem(LS,JSON.stringify(datos()));}catch(e){toast('No se pudo guardar: el teléfono no tiene espacio');}}
 function save(){clearTimeout(saveT); saveT=setTimeout(saveNow,250);}
+// Lleva datos de cualquier versión anterior al formato actual. Cada presupuesto se completa con los Ajustes que venían con esos datos.
+function migrar(x){
+  const base=Object.assign(clone(DEF_CFG),(x.cfg&&typeof x.cfg==='object')?x.cfg:{});
+  const ok=[], rotos=[];
+  (x.list||[]).forEach(b=>{try{if(!b||typeof b!=='object'||!b.id)throw 0; ok.push(norm(b,base));}catch(e){rotos.push(b);}});
+  return {cfg:base,list:ok,rotos,meta:(x.meta&&typeof x.meta==='object')?x.meta:{}};
+}
+function guardarRescate(raw){try{localStorage.setItem(LS_RESCATE,raw); return true;}catch(e){return false;}}
 function load(){
-  try{const x=JSON.parse(localStorage.getItem(LS)||'null');
-    if(x){cfg=Object.assign(clone(DEF_CFG),x.cfg||{}); list=(x.list||[]).map(norm); meta=Object.assign(meta,x.meta||{});}
-  }catch(e){}
-  let max=0; list.forEach(b=>{if(!b.numero){b.numero=++max+1000;} max=Math.max(max,b.numero);});
+  let raw=null;
+  try{raw=localStorage.getItem(LS);}catch(e){}
+  try{const r=localStorage.getItem(LS_RESCATE); if(r)rescate=r;}catch(e){}
+  if(raw){
+    let x=null; try{x=JSON.parse(raw);}catch(e){}
+    if(!x||typeof x!=='object'||!Array.isArray(x.list)){
+      // No se pudo leer: se guarda tal cual y no se pisa hasta que el usuario decida.
+      if(guardarRescate(raw))rescate=raw; else bloqueado=true;
+    }else{
+      const v=num(x.schemaVersion)||1;
+      if(v<SCHEMA){try{localStorage.setItem(LS_PREVIO+SCHEMA,raw);}catch(e){}}
+      const m=migrar(x);
+      cfg=m.cfg; list=m.list; meta=Object.assign(meta,m.meta);
+      if(m.rotos.length){meta.rotos=(meta.rotos||[]).concat(m.rotos);}
+      if(v<SCHEMA)saveNow();
+    }
+  }
+  let max=0; list.forEach(b=>{max=Math.max(max,num(b.numero));}); list.forEach(b=>{if(!num(b.numero))b.numero=++max;});
   if(meta.nextNum<=max)meta.nextNum=max+1;
+}
+function exportarTexto(texto,nombre){
+  const file=new File([texto],nombre,{type:'text/plain'});
+  if(navigator.canShare&&navigator.canShare({files:[file]}))navigator.share({files:[file]}).catch(e=>{if(e&&e.name!=='AbortError')descargar(file,false);});
+  else descargar(file,false);
 }
 document.addEventListener('visibilitychange',()=>{if(document.hidden)saveNow();});
 window.addEventListener('pagehide',saveNow);
@@ -432,6 +479,15 @@ function vLista(){
   if(esIOSSafari()&&!meta.hideInstall){
     m.append(h('div',{class:'sec'},h('div',{class:'group'},h('div',{class:'banner'},svg(I.phone),h('div',{class:'t'},h('b',null,'Instalala para usarla sin internet'),'Tocá Compartir y elegí “Agregar a pantalla de inicio”. Desde ahí usala siempre con el ícono: lo que cargues acá en Safari no aparece en el ícono.',h('div',{class:'acts'},h('button',{onclick:()=>{meta.hideInstall=true;saveNow();render();}},'Entendido')))))));
   }
+  if(rescate||bloqueado||(meta.rotos&&meta.rotos.length)){
+    const conf=S.confRescate;
+    m.append(h('div',{class:'sec'},h('div',{class:'group'},h('div',{class:'banner warn'},svg(I.shield),h('div',{class:'t'},
+      h('b',null,'Hay presupuestos que no se pudieron leer'),
+      bloqueado?'La app no puede guardar cambios hasta que exportes los datos guardados. Exportalos y mandámelos para recuperarlos.':'Se guardó una copia aparte, sin borrar nada. Exportala y mandámela para recuperarlos.',
+      h('div',{class:'acts'},
+        h('button',{onclick:()=>exportarTexto(rescate||JSON.stringify({rotos:meta.rotos||[]})||'', 'presupuestos-rescate-'+new Date().toISOString().slice(0,10)+'.txt')},'Exportar copia de rescate'),
+        bloqueado?null:h('button',{class:'red',onclick:()=>{if(!conf){S.confRescate=true;render();return;} try{localStorage.removeItem(LS_RESCATE);}catch(e){} rescate=null; meta.rotos=[]; S.confRescate=false; saveNow(); render(); toast('Copia de rescate borrada');}},conf?'Tocá de nuevo para borrarla':'Borrar copia de rescate')))))));
+  }
   const dias=meta.lastBackup?Math.floor((Date.now()-meta.lastBackup)/864e5):null;
   if(list.length>=1&&(dias===null||dias>=14)){
     m.append(h('div',{class:'sec'},h('div',{class:'group'},h('div',{class:'banner warn'},svg(I.shield),h('div',{class:'t'},h('b',null,dias===null?'Todavía no hiciste una copia':'Hace '+dias+' días que no hacés copia'),'Tus presupuestos viven en este iPhone. Guardá una copia en Archivos o mandátela por WhatsApp.',h('div',{class:'acts'},h('button',{onclick:exportar},'Hacer copia ahora')))))));
@@ -491,18 +547,19 @@ function ambBlock(m,b,a,ai){
   a.sups.forEach((s,si)=>m.append(supBlock(a,s,si)));
   m.append(h('div',{class:'chips'},['Paredes','Cielorraso','Zócalos','Marcos y puertas'].map(n=>h('button',{class:'chip',onclick:()=>{
     const ml=/z[oó]calo|marco/i.test(n); const s=nuevaSup(n,ml?'ml':'m2');
-    if(/cielo/i.test(n)){s.recargo=String(cfg.recCielo||''); const p=cfg.productos.find(x=>x.id==='cielo'); if(p)s.producto=p.id;}
-    if(ml){const p=cfg.productos.find(x=>/esmalte/i.test(x.nombre)); if(p)s.producto=p.id;}
+    if(/cielo/i.test(n)){s.recargo=String(cfg.recCielo||''); const p=b.pinturas.find(x=>x.id==='cielo'); if(p)s.producto=p.id;}
+    if(ml){const p=b.pinturas.find(x=>/esmalte/i.test(x.nombre)); if(p)s.producto=p.id;}
     a.sups.push(s); focusId=s.medidas[0].id+'-alto'; touch(true);}},'+ '+n))));
 }
 function supBlock(a,s,si){
   const g=h('div',{class:'group sup',style:'margin-top:12px'});
   g.append(cell(inp(s,'nombre',{cls:'tf left sup-name',mode:'text',ph:'Qué se pinta',list:'nombres',label:'Qué se pinta',
-    onchange:v=>{if(/cielo/i.test(v)&&String(s.recargo).trim()===''){s.recargo=String(cfg.recCielo||''); const p=cfg.productos.find(x=>x.id==='cielo'); if(p)s.producto=p.id; touch(true);}}}),
+    onchange:v=>{if(/cielo/i.test(v)&&String(s.recargo).trim()===''){s.recargo=String(cfg.recCielo||''); const p=cur().pinturas.find(x=>x.id==='cielo'); if(p)s.producto=p.id; touch(true);}}}),
     h('button',{class:'xbtn red','aria-label':'Eliminar superficie',html:I.minus,onclick:()=>{a.sups.splice(si,1); touch(true);}})));
-  const sel=h('select',{'aria-label':'Pintura',id:s.id+'-prod'},cfg.productos.map(p=>h('option',{value:p.id},p.nombre||'Sin nombre')));
-  sel.value=s.producto; sel.addEventListener('change',()=>{s.producto=sel.value; touch(true);});
-  const p=prod(s.producto);
+  const B=cur();
+  const sel=h('select',{'aria-label':'Pintura',id:s.id+'-prod'},pinturasOpc(B).map(p=>h('option',{value:p.id},p.nombre||'Sin nombre')));
+  sel.value=s.producto; sel.addEventListener('change',()=>{usarPintura(B,sel.value); s.producto=sel.value; touch(true);});
+  const p=prodDe(B,s.producto);
   g.append(h('div',{class:'cell col'},
     h('div',{class:'opts'},h('label',{class:'pick'},h('span',null,p?p.nombre:'Elegir pintura'),svg(I.updown),sel),seg([['m2','m²'],['ml','ml']],s.unidad,v=>{s.unidad=v;touch(true);},'Unidad')),
     h('div',{class:'opts'},h('span',{class:'lbl'},'Manos'),seg([[1,'1'],[2,'2'],[3,'3'],[4,'4']],s.manos,v=>{s.manos=v;touch(true);},'Cantidad de manos','full'))));
@@ -523,9 +580,9 @@ function supBlock(a,s,si){
     h('button',{onclick:()=>{const x=nuevaMed(); s.medidas.push(x); focusId=x.id+'-alto'; touch(true);}},'+ Medida'),
     !ml?h('button',{class:'red',onclick:()=>{const x=nuevaMed(true); s.medidas.push(x); focusId=x.id+'-alto'; touch(true);}},'− Restar puerta o ventana'):null)));
   g.append(cell(h('div',{class:'price'},
-      h('label',{for:s.id+'-precio'},ml?'$ ml':'$ m²'),out(inp(s,'precio',{label:'Precio por unidad',money:true}),el=>{el.placeholder=Math.round(precioAuto(s)).toLocaleString('es-AR');}),
+      h('label',{for:s.id+'-precio'},ml?'$ ml':'$ m²'),out(inp(s,'precio',{label:'Precio por unidad',money:true}),el=>{el.placeholder=Math.round(precioAuto(B,s)).toLocaleString('es-AR');}),
       h('label',{for:s.id+'-recargo'},'+%'),inp(s,'recargo',{ph:'0',cls:'box pc',label:'Recargo porcentaje',mode:'numeric'})),
-    out(h('div',{class:'subt'}),el=>{const q=supQty(s); el.innerHTML=''; el.append(h('b',null,f2(q)+(ml?' ml':' m²')),h('span',null,$(q*precioUnit(s)*(1+num(s.recargo)/100))));})));
+    out(h('div',{class:'subt'}),el=>{const q=supQty(s); el.innerHTML=''; el.append(h('b',null,f2(q)+(ml?' ml':' m²')),h('span',null,$(q*precioUnit(B,s)*(1+num(s.recargo)/100))));})));
   return g;
 }
 
@@ -538,6 +595,11 @@ function tCobro(m,b){
       seg(NIVELES.map((n,i)=>[i,n]),b.reparacion.nivel,v=>{b.reparacion.nivel=v; b.reparacion.pct=(cfg.recRep||[])[v]??0; touch(true);},'Nivel de reparaciones','full'))];
   if(b.reparacion.nivel>0)rep.push(cell(h('div',{class:'t'},'Recargo por reparaciones'),inp(b.reparacion,'pct',{cls:'box pc',label:'Reparaciones %',mode:'numeric',id:b.id+'rep'}),h('span',{class:'v'},'%')));
   rep.push(recRow('Trabajo en altura','Andamio, escalera larga',b.altura.on,()=>{b.altura.on=!b.altura.on;touch(true);},b.altura,'Trabajo'));
+  const cambio=plata(b.precios.m2)!==plata(cfg.precioM2)||plata(b.precios.ml)!==plata(cfg.precioMl);
+  const pr=[cell(h('label',{class:'t',for:b.id+'-pm2'},'m² con 2 manos'),inp(b.precios,'m2',{cls:'box r',money:true,label:'Precio m² de este presupuesto',id:b.id+'-pm2',onin:v=>{b.precios.m2=plata(v);}})),
+    cell(h('label',{class:'t',for:b.id+'-pml'},'Metro lineal zócalo'),inp(b.precios,'ml',{cls:'box r',money:true,label:'Precio ml de este presupuesto',id:b.id+'-pml',onin:v=>{b.precios.ml=plata(v);}}))];
+  if(cambio)pr.push(h('button',{class:'cell tap link',onclick:()=>{b.precios={m2:plata(cfg.precioM2),ml:plata(cfg.precioMl)}; touch(true); toast('Precios actualizados');}},'Usar los de Ajustes: '+$(plata(cfg.precioM2))+' m² · '+$(plata(cfg.precioMl))+' ml'));
+  m.append(sec('Precios de este presupuesto',pr,'Se copiaron de Ajustes al crearlo. Si cambiás Ajustes, este presupuesto no cambia.'));
   m.append(sec('Recargos',rep,'El porcentaje se calcula sobre la mano de obra por m².'));
 
   const ex=b.extras.map((e,i)=>cell(inp(e,'desc',{cls:'tf left',mode:'text',ph:'Descripción',label:'Descripción'}),inp(e,'monto',{cls:'box r',ph:'$',label:'Monto',money:true}),h('button',{class:'xbtn red','aria-label':'Borrar',html:I.minus,onclick:()=>{b.extras.splice(i,1);touch(true);}})));
@@ -588,13 +650,13 @@ function tMateriales(m,b){
     c.pp.filter(x=>x.unidad==='ml').forEach(x=>el.append(cell(h('div',{class:'t'},x.p?x.p.nombre:'Sin pintura',h('span',{class:'s num'},f2(x.q)+' ml de zócalos o marcos')),h('div',{class:'v'},'1 L suele alcanzar'))));
   }),h('div',{class:'sec-f'},'El rendimiento de cada pintura se cambia en Ajustes.')));
 
-  const mats=cfg.materiales.map(n=>{const v=b.materiales[n]||0;
-    return cell(h('span',{class:'t'},n),h('div',{class:'stp'+(v?' on':'')},h('button',{'aria-label':'Menos '+n,onclick:()=>{b.materiales[n]=Math.max(0,(b.materiales[n]||0)-1);touch(true);}},'−'),h('b',{class:'num'},String(v)),h('button',{'aria-label':'Más '+n,onclick:()=>{b.materiales[n]=(b.materiales[n]||0)+1;touch(true);}},'+')));});
+  const mats=unicos([...b.materialesLista,...cfg.materiales]).map(n=>{const v=b.materiales[n]||0;
+    return cell(h('span',{class:'t'},n),h('div',{class:'stp'+(v?' on':'')},h('button',{'aria-label':'Menos '+n,onclick:()=>{b.materiales[n]=Math.max(0,(b.materiales[n]||0)-1);touch(true);}},'−'),h('b',{class:'num'},String(v)),h('button',{'aria-label':'Más '+n,onclick:()=>{b.materiales[n]=(b.materiales[n]||0)+1; if(!b.materialesLista.includes(n))b.materialesLista.push(n); touch(true);}},'+')));});
   const ni=h('input',{class:'tf left',type:'text',placeholder:'Otro material',id:'nuevo-mat','aria-label':'Nuevo material',autocapitalize:'sentences'});
-  mats.push(cell(ni,h('button',{class:'xbtn',style:'color:var(--blue);width:auto;padding:0 4px;font-weight:600;font-size:17px',onclick:()=>{const v=ni.value.trim(); if(!v)return; if(!cfg.materiales.includes(v))cfg.materiales.push(v); b.materiales[v]=1; touch(true);}},'Agregar')));
+  mats.push(cell(ni,h('button',{class:'xbtn',style:'color:var(--blue);width:auto;padding:0 4px;font-weight:600;font-size:17px',onclick:()=>{const v=ni.value.trim(); if(!v)return; if(!cfg.materiales.includes(v))cfg.materiales.push(v); if(!b.materialesLista.includes(v))b.materialesLista.push(v); b.materiales[v]=1; touch(true);}},'Agregar')));
   m.append(sec('Materiales para el cliente',mats,'En 0 no aparece en el presupuesto.'));
 
-  m.append(sec('Lo que llevo yo',cfg.herramientas.map(n=>h('button',{class:'cell tap',role:'checkbox','aria-checked':b.herramientas[n]?'true':'false',onclick:()=>{b.herramientas[n]=!b.herramientas[n];touch(true);}},h('span',{class:'t'},n),b.herramientas[n]?svg(I.check):h('span',{style:'width:20px'})))));
+  m.append(sec('Lo que llevo yo',unicos([...b.herramientasLista,...cfg.herramientas]).map(n=>h('button',{class:'cell tap',role:'checkbox','aria-checked':b.herramientas[n]?'true':'false',onclick:()=>{b.herramientas[n]=!b.herramientas[n]; if(!b.herramientasLista.includes(n))b.herramientasLista.push(n); touch(true);}},h('span',{class:'t'},n),b.herramientas[n]?svg(I.check):h('span',{style:'width:20px'})))));
 }
 
 /* --- Resumen (para vos) --- */
@@ -618,7 +680,7 @@ function tResumen(m,b){
   const nt=h('textarea',{class:'area',id:b.id+'-notas','aria-label':'Notas',placeholder:'Cosas para acordarte de esta obra'}); nt.value=b.notas||''; nt.addEventListener('input',()=>{b.notas=nt.value;touch(false);});
   m.append(sec('Notas mías',[h('div',{class:'cell'},nt)]));
   m.append(sec(null,[
-    h('button',{class:'cell tap link',onclick:()=>{const n=norm(clone(b)); n.id=uid(); n.numero=meta.nextNum++; n.cliente=(b.cliente||'Presupuesto')+' (copia)'; n.creado=n.actualizado=Date.now(); n.ambientes.forEach(a=>{a.id=uid();a.sups.forEach(s=>{s.id=uid();s.medidas.forEach(x=>x.id=uid());});}); list.push(n); saveNow(); toast('Copia creada'); go('editor',{cur:n.id,tab:'medidas'});}},'Duplicar presupuesto'),
+    h('button',{class:'cell tap link',onclick:()=>{const n=norm(clone(b)); n.id=uid(); n.numero=meta.nextNum++; n.cliente=(b.cliente||'Presupuesto')+' (copia)'; n.creado=n.actualizado=Date.now(); n.emitido=null; n.ambientes.forEach(a=>{a.id=uid();a.sups.forEach(s=>{s.id=uid();s.medidas.forEach(x=>x.id=uid());});}); list.push(n); saveNow(); toast('Copia creada'); go('editor',{cur:n.id,tab:'medidas'});}},'Duplicar presupuesto'),
     S.confirmDel?h('button',{class:'cell tap link red',onclick:()=>eliminar(b)},'Tocá de nuevo para eliminar'):
       h('button',{class:'cell tap link red',onclick:()=>{S.confirmDel=true;render();}},'Eliminar presupuesto')]));
 }
@@ -634,7 +696,11 @@ function tCliente(m,b){
   pintar();
   m.append(h('div',{class:'sec stack'},
     h('button',{class:'pbtn',onclick:()=>compartirImagen(img)},svg(I.share),'Compartir imagen'),
-    h('button',{class:'pbtn sec2',onclick:()=>copiar(textoWpp(b))},'Copiar texto para WhatsApp')));
+    h('button',{class:'pbtn sec2',onclick:()=>{copiar(textoWpp(b)); marcarEmitido();}},'Copiar texto para WhatsApp')));
+  const vd=b.emitido?'Emitido el '+fecha(b.emitido):'La fecha se fija al compartir por primera vez';
+  const fe=[cell(h('div',{class:'t'},'Válido hasta '+fecha(vence(b)),h('span',{class:'s'},vd)),inp(b,'validez',{cls:'box pc',mode:'numeric',label:'Días de validez',id:b.id+'-val',onchange:()=>render()}),h('span',{class:'v'},'días'))];
+  if(b.emitido)fe.push(h('button',{class:'cell tap link',onclick:()=>{b.emitido=Date.now(); touch(true); toast('Fecha actualizada a hoy');}},'Usar la fecha de hoy'));
+  m.append(sec('Fecha y validez',fe,b.emitido?'Si actualizás precios y lo volvés a mandar, usá la fecha de hoy.':null));
   const o=b.img;
   const opt=(k,t,s)=>cell(h('div',{class:'t'},t,s?h('span',{class:'s'},s):null),sw(o[k],()=>{o[k]=!o[k];touch(true);},t));
   m.append(sec('Mostrar en el presupuesto',[opt('precios','Precio por ambiente','Si está apagado, solo va el total al final'),opt('materiales','Materiales a comprar'),opt('aclaraciones','Aclaraciones'),opt('oscuro','Fondo negro')]));
@@ -645,10 +711,11 @@ function tCliente(m,b){
   }
   m.append(h('div',{class:'sec-f',style:'padding-top:16px'},'Si no se abre el menú para compartir, mantené apretada la imagen y elegí “Guardar en Fotos”.'));
 }
+function marcarEmitido(){const b=cur(); if(b&&!b.emitido){b.emitido=Date.now(); touch(true);}}
 function compartirImagen(img){
   if(shareFile&&navigator.canShare&&navigator.canShare({files:[shareFile]})){
-    navigator.share({files:[shareFile]}).catch(e=>{if(e&&e.name!=='AbortError')toast('Mantené apretada la imagen para guardarla');});
-  }else if(shareFile){descargar(shareFile,false);}
+    navigator.share({files:[shareFile]}).then(marcarEmitido).catch(e=>{if(e&&e.name!=='AbortError')toast('Mantené apretada la imagen para guardarla');});
+  }else if(shareFile){descargar(shareFile,false); marcarEmitido();}
   else toast('Un segundo, se está armando la imagen');
 }
 function copiar(t){
@@ -667,12 +734,12 @@ function matList(b,c){
   const l=[];
   c.pp.filter(x=>x.unidad==='m2'&&x.p&&x.litros>0).forEach(x=>l.push(x.p.nombre+': '+latas(x.litros)));
   c.pp.filter(x=>x.unidad==='ml'&&x.p).forEach(x=>{if(!l.some(s=>s.startsWith(x.p.nombre+':')))l.push(x.p.nombre+': 1 L');});
-  Object.entries(b.materiales).filter(([k,v])=>v>0&&cfg.materiales.includes(k)).forEach(([k,v])=>l.push(v+' × '+k));
+  Object.entries(b.materiales).filter(([k,v])=>v>0).forEach(([k,v])=>l.push(v+' × '+k));
   return l;
 }
 function textoWpp(b){
   const c=calc(b); const L=[];
-  L.push('*PRESUPUESTO DE PINTURA* · '+nro(b.numero)); if(b.cliente)L.push(b.cliente); if(b.direccion)L.push(b.direccion); L.push(fecha(Date.now())); L.push('');
+  L.push('*PRESUPUESTO DE PINTURA* · '+nro(b.numero)); if(b.cliente)L.push(b.cliente); if(b.direccion)L.push(b.direccion); L.push(fecha(fechaDoc(b))); L.push('');
   L.push('*Ambientes a pintar*');
   c.porAmb.forEach(A=>{const rs=A.rows.filter(r=>r.q); if(!rs.length)return;
     L.push('• '+(A.a.nombre||'Ambiente')+': '+[A.m2?f2(A.m2)+' m²':'',A.ml?f2(A.ml)+' ml':''].filter(Boolean).join(' + ')+(b.img.precios?' — '+$(A.sub):''));
@@ -683,7 +750,7 @@ function textoWpp(b){
   L.push(''); L.push('*Incluye*'); incluye(b).forEach(x=>L.push('• '+x));
   if(b.img.materiales){const ms=matList(b,c); if(ms.length){L.push(''); L.push('*Materiales a comprar*'); ms.forEach(x=>L.push('• '+x));}}
   if(b.img.aclaraciones&&b.aclaraciones){L.push(''); L.push('*Aclaraciones*'); b.aclaraciones.split('\n').filter(s=>s.trim()).forEach(x=>L.push('• '+x.trim()));}
-  L.push(''); L.push('*Total mano de obra: '+$(c.total)+'*');
+  L.push(''); L.push('*Total mano de obra: '+$(c.total)+'*'); L.push('Precio válido hasta el '+fecha(vence(b))+'.');
   if(cfg.nombre||cfg.telefono){L.push(''); L.push([cfg.nombre,cfg.telefono].filter(Boolean).join(' · '));}
   return L.join('\n');
 }
@@ -706,7 +773,7 @@ async function dibujar(b){
     if(cfg.nombre)cap('Presupuesto',W-P,y-8,'right');
     y+=46;
     set('400 28px '+FT,K.mut); if(cfg.telefono)T(cfg.telefono,P,y); else if(cfg.nombre)T('Trabajos de pintura',P,y);
-    T(nro(b.numero)+' · '+fecha(Date.now()),W-P,y,'right');
+    T(nro(b.numero)+' · '+fecha(fechaDoc(b)),W-P,y,'right');
     y+=42; rule(y); y+=76;
     cap('Cliente',P,y); y+=50;
     set('600 40px '+FD,K.ink); T(b.cliente||'—',P,y); y+=46;
@@ -755,6 +822,7 @@ async function dibujar(b){
     set('600 34px '+FT,K.ink); T('Total mano de obra',P,y);
     set('600 44px '+FD,K.ink); T($(c.total),W-P,y+2,'right');
     y+=46; set('400 25px '+FT,K.mut); T(conPrecio?'Incluye todos los conceptos detallados.':'Por '+f2(c.m2)+' m²'+(c.ml?' + '+f2(c.ml)+' ml':'')+(b.dias?' · '+b.dias+(/d[ií]a/i.test(b.dias)?'':' días'):''),P,y);
+    y+=38; T('Precio válido hasta el '+fecha(vence(b))+'.',P,y);
     return y+P;
   }
   const mc=document.createElement('canvas').getContext('2d');
@@ -770,7 +838,7 @@ function roundRect(ctx,x,y,w,h,r){ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(
 function descargar(file,marcar){const u=URL.createObjectURL(file); const a=h('a',{href:u,download:file.name}); document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),8000); if(marcar){meta.lastBackup=Date.now(); saveNow(); render(); toast('Copia descargada');}}
 function exportar(){
   saveNow();
-  const data=JSON.stringify({app:'presupuestos-pintura',version:1,fecha:Date.now(),cfg,list,meta});
+  const data=JSON.stringify(Object.assign({app:'presupuestos-pintura',fecha:Date.now()},datos()));
   const name='presupuestos-copia-'+new Date().toISOString().slice(0,10)+'.json';
   const file=new File([data],name,{type:'application/json'});
   const hecho=()=>{meta.lastBackup=Date.now(); saveNow(); render(); toast('Copia guardada');};
@@ -783,11 +851,13 @@ fileIn.addEventListener('change',()=>{
   const f=fileIn.files&&fileIn.files[0]; if(!f)return;
   const r=new FileReader();
   r.onload=()=>{try{const x=JSON.parse(r.result); if(!x||!Array.isArray(x.list))throw 0;
+      const soloEjemplo=list.every(b=>/^EJEMPLO/.test(b.cliente||''));
+      const mg=migrar(x);
       const map=new Map(list.map(b=>[b.id,b])); let n=0;
-      x.list.forEach(rb=>{if(!rb||!rb.id)return; const l=map.get(rb.id); if(!l||(rb.actualizado||0)>(l.actualizado||0)){map.set(rb.id,norm(rb)); n++;}});
+      mg.list.forEach(rb=>{const l=map.get(rb.id); if(!l||(rb.actualizado||0)>(l.actualizado||0)){map.set(rb.id,rb); n++;}});
       list=[...map.values()];
-      if(x.cfg&&!list.length)cfg=Object.assign(clone(DEF_CFG),x.cfg);
-      else if(x.cfg&&S.importCfg)cfg=Object.assign(clone(DEF_CFG),x.cfg);
+      if(x.cfg&&soloEjemplo)cfg=mg.cfg;
+      if(mg.rotos.length)meta.rotos=(meta.rotos||[]).concat(mg.rotos);
       if(x.meta&&x.meta.nextNum>meta.nextNum)meta.nextNum=x.meta.nextNum;
       saveNow(); render(); toast(n?'Se recuperaron '+n+(n===1?' presupuesto':' presupuestos'):'La copia no tenía nada nuevo');
     }catch(e){toast('Ese archivo no es una copia de esta app');}
@@ -803,7 +873,7 @@ function vAjustes(){
   const F=(lab,key,o)=>cell(h('label',{class:'t',for:'cfg-'+key},lab),inp(cfg,key,Object.assign({cfg:true,id:'cfg',cls:'box r'},o||{})));
   m.append(sec('Tus datos',[F('Nombre','nombre',{mode:'text',ph:'Tu nombre',cls:'tf'}),F('Teléfono','telefono',{mode:'tel',ph:'Opcional',cls:'tf'})],'Aparecen arriba del presupuesto que le mandás al cliente.'));
   const rep=cell(h('span',{class:'t'},'% reparaciones',h('span',{class:'s'},'Leve · media · mucha')),...[1,2,3].map(i=>{const e=h('input',{class:'box pc',inputmode:'numeric',id:'cfg-rep'+i,value:String(cfg.recRep[i]??''),'aria-label':'Reparaciones '+NIVELES[i]}); e.addEventListener('input',()=>{cfg.recRep[i]=num(e.value);touchCfg(false);}); return e;}));
-  m.append(sec('Precios',[F('m² con 2 manos','precioM2',{money:true}),F('Metro lineal zócalo','precioMl',{money:true}),F('% cielorraso','recCielo',{mode:'numeric'}),F('% mover muebles','recMuebles',{mode:'numeric'}),F('% trabajo en altura','recAltura',{mode:'numeric'}),rep],'Con 1, 3 o 4 manos el precio se ajusta solo en proporción. En cada superficie podés poner otro precio a mano.'));
+  m.append(sec('Precios',[F('m² con 2 manos','precioM2',{money:true}),F('Metro lineal zócalo','precioMl',{money:true}),F('% cielorraso','recCielo',{mode:'numeric'}),F('% mover muebles','recMuebles',{mode:'numeric'}),F('% trabajo en altura','recAltura',{mode:'numeric'}),rep,F('Validez del presupuesto (días)','validezDias',{mode:'numeric'})],'Se usan en los presupuestos nuevos; los que ya hiciste guardan sus propios precios. Con 1, 3 o 4 manos el precio se ajusta en proporción.'));
   m.append(sec('Valores por día',[F('Garage','garage',{money:true}),F('Comida','comida',{money:true}),F('Ayudante','ayudante',{money:true}),F('Día extra','diaExtra',{money:true})],'Se cargan solos en cada presupuesto nuevo.'));
   const pc=cfg.productos.map((p,i)=>cell(inp(p,'nombre',{mode:'text',cfg:true,id:'p'+i,cls:'tf left',label:'Nombre de la pintura',ph:'Nombre'}),inp(p,'rend',{cfg:true,id:'p'+i,cls:'box pc',label:'Rendimiento m² por litro'}),h('span',{class:'v'},'m²/L'),h('button',{class:'xbtn red','aria-label':'Quitar pintura',html:I.minus,onclick:()=>{if(cfg.productos.length<2)return; cfg.productos.splice(i,1);touchCfg(true);}})));
   pc.push(h('button',{class:'cell tap link',onclick:()=>{cfg.productos.push({id:uid(),nombre:'',rend:12}); focusId='p'+(cfg.productos.length-1)+'-nombre'; touchCfg(true);}},'Agregar pintura'));
@@ -818,7 +888,7 @@ function vAjustes(){
   m.append(sec('Copia de seguridad',[
     h('button',{class:'cell tap link',onclick:exportar},'Exportar copia'),
     h('button',{class:'cell tap link',onclick:()=>fileIn.click()},'Recuperar desde una copia')],
-    (meta.lastBackup?'Última copia: '+fecha(meta.lastBackup)+'. ':'Todavía no hiciste ninguna copia. ')+'Guardala en Archivos, iCloud o mandátela por WhatsApp. Si cambiás de teléfono, la recuperás desde acá.'));
+    (meta.lastBackup?'Última copia: '+fecha(meta.lastBackup)+'. ':'Todavía no hiciste ninguna copia. ')+'Tus presupuestos están solo en este iPhone: si borrás el ícono de la app, se borran. Guardá la copia en Archivos, iCloud o mandátela por WhatsApp.'));
   m.append(h('div',{class:'sec-f',style:'text-align:center;padding-top:24px'},'Presupuestos '+VERSION+' · funciona sin internet'));
 }
 
@@ -830,7 +900,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostn
     reg.addEventListener('updatefound',()=>{const w=reg.installing; if(!w)return; w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)toast('Hay una versión nueva: cerrá y volvé a abrir la app');});});
   }).catch(()=>{});
 }
-window.__calc=calc; window.__norm=norm; window.__dibujar=dibujar;
+window.__calc=calc; window.__norm=norm; window.__dibujar=dibujar; window.__migrar=migrar;
 })();
 </script>
 </body>
