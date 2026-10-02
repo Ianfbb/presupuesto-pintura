@@ -206,6 +206,9 @@ body.typing .tabbar,body.typing .acc{display:none}
 .delbtn{border:0;background:var(--red);color:#fff;border-radius:100px;padding:8px 14px;font-size:15px;font-weight:600;flex:none}
 .toast.act{display:flex;align-items:center;gap:14px;padding:8px 8px 8px 20px}
 .toast.act button{border:0;background:var(--blue);color:#fff;border-radius:100px;padding:8px 14px;font-weight:600;font-size:15px}
+.saved{display:inline-flex;align-items:center;gap:4px;height:44px;padding-inline:4px;font-size:15px;font-weight:600;color:var(--green);opacity:0;transition:opacity .25s;flex:none}
+.saved.on{opacity:1}
+.saved .check{color:var(--green);width:18px;height:18px}
 .hidden-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 @media (max-width:374px){.medh,.med{grid-template-columns:minmax(0,1fr) 10px minmax(0,1fr) 10px 40px 64px 28px}.large h1{font-size:30px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -217,7 +220,7 @@ body.typing .tabbar,body.typing .acc{display:none}
 <script>
 (function(){
 "use strict";
-const VERSION='1.2';
+const VERSION='1.2.1';
 const SCHEMA=2;
 const $app=document.getElementById('app');
 const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
@@ -373,7 +376,9 @@ const LS='pintura-presupuestos-v1';
 const LS_RESCATE=LS+'-rescate', LS_PREVIO=LS+'-antes-v';
 let saveT, bloqueado=false, rescate=null;
 function datos(){return {schemaVersion:SCHEMA,cfg,list,meta};}
-function saveNow(){clearTimeout(saveT); if(bloqueado)return; try{localStorage.setItem(LS,JSON.stringify(datos()));}catch(e){toast('No se pudo guardar: el teléfono no tiene espacio');}}
+let guardT;
+function avisoGuardado(){const el=document.getElementById('guardado'); if(!el)return; el.classList.add('on'); clearTimeout(guardT); guardT=setTimeout(()=>el.classList.remove('on'),1800);}
+function saveNow(){clearTimeout(saveT); if(bloqueado)return; try{localStorage.setItem(LS,JSON.stringify(datos())); avisoGuardado();}catch(e){toast('No se pudo guardar: el teléfono no tiene espacio');}}
 function save(){clearTimeout(saveT); saveT=setTimeout(saveNow,250);}
 // Lleva datos de cualquier versión anterior al formato actual. Cada presupuesto se completa con los Ajustes que venían con esos datos.
 function migrar(x){
@@ -867,7 +872,7 @@ fileIn.addEventListener('change',()=>{
 
 /* --- Ajustes --- */
 function vAjustes(){
-  $app.append(nav('Ajustes',h('button',{class:'gbtn ic','aria-label':'Volver',onclick:()=>{saveNow();go('lista');},html:I.back})));
+  $app.append(nav('Ajustes',h('button',{class:'gbtn ic','aria-label':'Volver',onclick:()=>{saveNow();go('lista');},html:I.back}),h('span',{id:'guardado',class:'saved',role:'status','aria-live':'polite'},svg(I.check),'Guardado')));
   $app.append(large('Ajustes'));
   const m=h('div',{class:'main nobar'}); $app.append(m);
   const F=(lab,key,o)=>cell(h('label',{class:'t',for:'cfg-'+key},lab),inp(cfg,key,Object.assign({cfg:true,id:'cfg',cls:'box r'},o||{})));
