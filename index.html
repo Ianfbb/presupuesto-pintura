@@ -138,9 +138,14 @@ textarea.area{border:0;background:transparent;width:100%;min-height:110px;resize
 .box.falta{color:var(--red)}
 .amb-sep{height:2px;border-radius:1px;background:var(--violet);margin:36px 4px 0;opacity:.85}
 .amb-sep+.amb-h{margin-top:16px}
-.medh.pz,.med.pz{grid-template-columns:minmax(0,1fr) 56px 88px 30px}
-.med.pz .pick{height:40px;padding-inline:12px 10px}
-.med.pz .pick span{font-size:15px}
+.pzrow{display:flex;flex-direction:column;gap:8px;padding:10px 0}
+.pzrow+.pzrow{border-top:1px solid var(--sep)}
+.pz1{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:8px;align-items:center}
+.pz1 .pick{height:40px;padding-inline:12px 10px}
+.pz1 .pick span{font-size:15px}
+.pz2{display:grid;grid-template-columns:56px 12px minmax(0,1fr) 96px;gap:6px;align-items:center}
+.pz2 .x{text-align:center;color:var(--label3)}
+.pzname{height:40px;background:var(--fill)!important;border-radius:12px;padding:0 12px!important;text-align:left}
 .res.sinprecio{color:var(--red);font-weight:500;font-size:14px}
 .medh.ml,.med.ml{grid-template-columns:minmax(0,1fr) 14px 46px 72px 30px}
 .medh{font-size:12px;color:var(--label2);letter-spacing:0}
@@ -233,8 +238,8 @@ body.typing .tabbar,body.typing .acc{display:none}
 <script>
 (function(){
 "use strict";
-const VERSION='1.4';
-const SCHEMA=3;
+const VERSION='1.5';
+const SCHEMA=4;
 const $app=document.getElementById('app');
 const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
 const clone=x=>JSON.parse(JSON.stringify(x));
@@ -279,7 +284,7 @@ const NIVELES=['Ninguna','Leve','Media','Mucha'];
 const NOMBRES=['Paredes','Cielorraso','Zócalos','Marcos y puertas','Placard','Rejas','Columnas','Frente','Medianera','Piso epoxi','Ventanas'];
 const DEF_CFG={
   precioM2:7800, precioMl:1700, precioCielo:9000, nombre:'', telefono:'',
-  piezas:[{id:'puerta2',nombre:'Puerta con marco · 2 lados',precio:0},{id:'puerta1',nombre:'Puerta con marco · 1 lado',precio:0},{id:'marco2',nombre:'Marco · 2 lados',precio:0},{id:'marco1',nombre:'Marco · 1 lado',precio:0}],
+  piezas:[{id:'puerta2',nombre:'Puerta con marco · 2 lados',precio:0},{id:'puerta1',nombre:'Puerta con marco · 1 lado',precio:0},{id:'marco2',nombre:'Marco · 2 lados',precio:0},{id:'marco1',nombre:'Marco · 1 lado',precio:0},{id:'escalera',nombre:'Escalera',precio:0}],
   productos:[
     {id:'latex-int',nombre:'Látex interior',rend:12},
     {id:'latex-ext',nombre:'Látex exterior',rend:10},
@@ -304,7 +309,7 @@ const S={view:'lista',cur:null,tab:'medidas',confirmDel:false};
 
 /* ---------- modelo ---------- */
 function nuevaMed(restar){return {id:uid(),alto:'',ancho:'',cant:'1',restar:!!restar};}
-function nuevaPieza(b){const ps=(b&&b.piezas)||cfg.piezas; return {id:uid(),pieza:(ps[0]||{}).id||'',cant:'1'};}
+function nuevaPieza(b){const ps=(b&&b.piezas)||cfg.piezas, p=ps[0]||{}; return {id:uid(),pieza:p.id||'',cant:'1',precio:plata(p.precio)?fmtMoney(String(plata(p.precio))):''};}
 function nuevaSup(nombre,unidad,pinturas){const ps=pinturas||(cur()&&cur().pinturas)||cfg.productos; return {id:uid(),nombre:nombre||'Paredes',producto:(ps[0]||{}).id||'',manos:2,unidad:unidad||'m2',precio:'',recargo:'',medidas:[nuevaMed()]};}
 function nuevoAmb(n,pinturas){return {id:uid(),nombre:n,sups:[nuevaSup('Paredes','m2',pinturas)]};}
 // Copia de los valores de Ajustes que quedan fijos dentro de cada presupuesto
@@ -350,11 +355,14 @@ const esCielo=s=>/cielo/i.test(s.nombre||'');
 const uTxt=(q,u)=>f2(q)+(u==='ml'?' ml':u==='u'?(q===1?' pieza':' piezas'):' m²');
 const piezaDe=(b,id)=>(b.piezas||[]).find(p=>p.id===id)||cfg.piezas.find(p=>p.id===id);
 const piezasOpc=b=>[...(b.piezas||[]),...cfg.piezas.filter(p=>!(b.piezas||[]).some(q=>q.id===p.id))];
+// Precio de una pieza: el que escribiste en la medida; si está vacío, el de la lista.
+const precioPz=(b,m)=>String(m.precio==null?'':m.precio).trim()!==''?plata(m.precio):m.pieza==='otro'?0:plata((piezaDe(b,m.pieza)||{}).precio);
+const nomPz=(b,m)=>m.pieza==='otro'?(String(m.nombre||'').trim()||'Otro trabajo'):((piezaDe(b,m.pieza)||{}).nombre||'Pieza');
 function usarPieza(b,id){if(!(b.piezas||[]).some(p=>p.id===id)){const p=cfg.piezas.find(x=>x.id===id); if(p){b.piezas=b.piezas||[]; b.piezas.push(clone(p));}}}
 const qAmb=A=>[A.m2?f2(A.m2)+' m²':'',A.ml?f2(A.ml)+' ml':'',A.u?uTxt(A.u,'u'):''].filter(Boolean).join(' + ');
 function supQty(s){let t=0; for(const m of s.medidas){const v=medQty(s,m); t+=m.restar&&s.unidad!=='u'?-v:v;} return Math.max(0,t);}
 // Importe de una superficie: por m²/ml, o sumando el precio de cada pieza en esmalte.
-function supSub(b,s){const r=1+num(s.recargo)/100; if(s.unidad==='u')return s.medidas.reduce((t,m)=>t+veces(m)*plata((piezaDe(b,m.pieza)||{}).precio),0)*r; return supQty(s)*precioUnit(b,s)*r;}
+function supSub(b,s){const r=1+num(s.recargo)/100; if(s.unidad==='u')return s.medidas.reduce((t,m)=>t+veces(m)*precioPz(b,m),0)*r; return supQty(s)*precioUnit(b,s)*r;}
 function precioAuto(b,s){return plata(s.unidad==='ml'?b.precios.ml:esCielo(s)?b.precios.cielo:b.precios.m2)*(num(s.manos)||2)/2;}
 function precioUnit(b,s){return String(s.precio).trim()!==''?plata(s.precio):precioAuto(b,s);}
 function latas(L){
@@ -380,7 +388,7 @@ function calc(b){
         if(p&&s.unidad==='m2')pp[k].litros+=q*s.manos/(num(p.rend)||12);
         const tk=tipoKey(s.nombre)+'|'+s.unidad; porTipo[tk]=porTipo[tk]||{nombre:tipoKey(s.nombre),unidad:s.unidad,q:0,sub:0}; porTipo[tk].q+=q; porTipo[tk].sub+=sub;
       }
-      const r={a,s,q,pu,sub,p}; if(s.unidad==='u')r.piezas=s.medidas.filter(m=>veces(m)>0).map(m=>{const pz=piezaDe(b,m.pieza)||{}; return {nombre:pz.nombre||'Pieza',cant:veces(m),precio:plata(pz.precio),sub:veces(m)*plata(pz.precio)*(1+num(s.recargo)/100)};});
+      const r={a,s,q,pu,sub,p}; if(s.unidad==='u')r.piezas=s.medidas.filter(m=>veces(m)>0).map(m=>{const pr=precioPz(b,m); return {nombre:nomPz(b,m),cant:veces(m),precio:pr,sub:veces(m)*pr*(1+num(s.recargo)/100)};});
       rows.push(r); A.rows.push(r);
     }
     porAmb.push(A);
@@ -419,6 +427,7 @@ function migrar(x){
     if(xc.precioCielo==null)base.precioCielo=Math.round(plata(base.precioM2)*(1+num(xc.recCielo!=null?xc.recCielo:15)/100)/100)*100;
     base.recCielo=0;
   }
+  if(v<4&&Array.isArray(base.piezas)&&!base.piezas.some(p=>p.id==='escalera'))base.piezas.push({id:'escalera',nombre:'Escalera',precio:0});
   const ok=[], rotos=[];
   (x.list||[]).forEach(b=>{try{if(!b||typeof b!=='object'||!b.id)throw 0; ok.push(norm(b,base));}catch(e){rotos.push(b);}});
   return {cfg:base,list:ok,rotos,meta:(x.meta&&typeof x.meta==='object')?x.meta:{}};
@@ -606,22 +615,22 @@ function supBlock(a,s,si){
     h('div',{class:'opts'},h('label',{class:'pick'},h('span',null,p?p.nombre:'Elegir pintura'),svg(I.updown),sel),seg([['m2','m²'],['ml','ml'],['u','Piezas']],s.unidad,v=>{s.unidad=v; if(v==='u')s.medidas.forEach(m=>{if(!m.pieza)m.pieza=(B.piezas[0]||{}).id||'';}); touch(true);},'Unidad')),
     s.unidad==='u'?null:h('div',{class:'opts'},h('span',{class:'lbl'},'Manos'),seg([[1,'1'],[2,'2'],[3,'3'],[4,'4']],s.manos,v=>{s.manos=v;touch(true);},'Cantidad de manos','full'))));
   if(s.unidad==='u'){
-    const lst=h('div',{class:'meds'});
-    lst.append(h('div',{class:'medh pz','aria-hidden':'true'},h('span',null,'Trabajo'),h('span',{style:'text-align:center'},'Cant.'),h('span',{style:'text-align:right'},'Importe'),h('span')));
+    const lst=h('div',{class:'meds pzs'});
     s.medidas.forEach((md,mi)=>{
       if(!md.pieza)md.pieza=(B.piezas[0]||{}).id||'';
-      const ps=h('select',{'aria-label':'Trabajo',id:md.id+'-pieza'},piezasOpc(B).map(p=>h('option',{value:p.id},p.nombre||'Sin nombre')));
-      ps.value=md.pieza; ps.addEventListener('change',()=>{usarPieza(B,ps.value); md.pieza=ps.value; touch(true);});
-      const pz=piezaDe(B,md.pieza)||{};
-      lst.append(h('div',{class:'med pz'},h('label',{class:'pick'},h('span',null,pz.nombre||'Elegir'),svg(I.updown),ps),inp(md,'cant',{ph:'1',label:'Cantidad',mode:'numeric'}),
-        out(h('span',{class:'res num'}),el=>{const p=piezaDe(B,md.pieza)||{}; el.textContent=plata(p.precio)?$(veces(md)*plata(p.precio)):'sin precio'; el.classList.toggle('sinprecio',!plata(p.precio));}),
-        h('button',{class:'xbtn','aria-label':'Borrar trabajo',html:I.xc,onclick:()=>{s.medidas.splice(mi,1); touch(true);}})));
+      const ps=h('select',{'aria-label':'Trabajo',id:md.id+'-pieza'},[...piezasOpc(B).map(p=>h('option',{value:p.id},p.nombre||'Sin nombre')),h('option',{value:'otro'},'Otro (lo escribo yo)')]);
+      ps.value=md.pieza; ps.addEventListener('change',()=>{const v=ps.value; if(v!=='otro')usarPieza(B,v); md.pieza=v; const pr=v==='otro'?0:plata((piezaDe(B,v)||{}).precio); md.precio=pr?fmtMoney(String(pr)):''; focusId=v==='otro'?md.id+'-nombre':md.id+'-precio'; touch(true);});
+      const row=h('div',{class:'pzrow'});
+      row.append(h('div',{class:'pz1'},h('label',{class:'pick'},h('span',null,nomPz(B,md)),svg(I.updown),ps),h('button',{class:'xbtn','aria-label':'Borrar trabajo',html:I.xc,onclick:()=>{s.medidas.splice(mi,1); touch(true);}})));
+      if(md.pieza==='otro')row.append(inp(md,'nombre',{cls:'tf left pzname',mode:'text',ph:'Qué es (ej: Escalera)',label:'Nombre del trabajo'}));
+      row.append(h('div',{class:'pz2'},inp(md,'cant',{ph:'1',label:'Cantidad',mode:'numeric'}),h('span',{class:'x'},'×'),
+        inp(md,'precio',{ph:'$ precio c/u',money:true,cls:'box r',label:'Precio por unidad'}),
+        out(h('span',{class:'res num'}),el=>{const p=precioPz(B,md); el.textContent=p?$(veces(md)*p):'sin precio'; el.classList.toggle('sinprecio',!p);})));
+      lst.append(row);
     });
-    g.append(h('div',{class:'cell col'},lst,h('div',{class:'acts'},h('button',{onclick:()=>{s.medidas.push(nuevaPieza(B)); touch(true);}},'+ Trabajo'))));
-    const falta=s.medidas.some(md=>!plata((piezaDe(B,md.pieza)||{}).precio));
+    g.append(h('div',{class:'cell col'},lst,h('div',{class:'acts'},h('button',{onclick:()=>{const n=nuevaPieza(B); s.medidas.push(n); focusId=n.id+'-precio'; touch(true);}},'+ Trabajo'))));
     g.append(cell(h('div',{class:'price'},h('label',{for:s.id+'-recargo'},'+%'),inp(s,'recargo',{ph:'0',cls:'box pc',label:'Recargo porcentaje',mode:'numeric'})),
       out(h('div',{class:'subt'}),el=>{el.innerHTML=''; el.append(h('b',null,uTxt(supQty(s),'u')),h('span',null,$(supSub(B,s))));})));
-    if(falta)g.append(h('div',{class:'cell'},h('span',{class:'t',style:'color:var(--red);font-size:15px'},'Hay trabajos sin precio. Cargalos en Cobro → Precios de este presupuesto, o en Ajustes.')));
     return g;
   }
   const ml=s.unidad==='ml';
@@ -660,9 +669,7 @@ function tCobro(m,b){
   const pr=[cell(h('label',{class:'t',for:b.id+'-pm2'},'m² con 2 manos'),inp(b.precios,'m2',{cls:'box r',money:true,label:'Precio m² de este presupuesto',id:b.id+'-pm2',onin:v=>{b.precios.m2=plata(v);}})),
     cell(h('label',{class:'t',for:b.id+'-pci'},'m² cielorraso (2 manos)'),inp(b.precios,'cielo',{cls:'box r',money:true,label:'Precio m² cielorraso de este presupuesto',id:b.id+'-pci',onin:v=>{b.precios.cielo=plata(v);}})),
     cell(h('label',{class:'t',for:b.id+'-pml'},'Metro lineal zócalo'),inp(b.precios,'ml',{cls:'box r',money:true,label:'Precio ml de este presupuesto',id:b.id+'-pml',onin:v=>{b.precios.ml=plata(v);}}))];
-  const usaPz=b.ambientes.some(a=>a.sups.some(x=>x.unidad==='u'));
-  if(usaPz)(b.piezas||[]).forEach((p,i)=>pr.push(cell(h('label',{class:'t',for:b.id+'-pz'+i},p.nombre||'Pieza',h('span',{class:'s'},'Esmalte, por unidad')),inp(p,'precio',{cls:'box r',money:true,label:'Precio '+p.nombre,id:b.id+'-pz'+i,onin:v=>{p.precio=plata(v);}}))));
-  if(cambio)pr.push(h('button',{class:'cell tap link',onclick:()=>{b.precios={m2:plata(cfg.precioM2),ml:plata(cfg.precioMl),cielo:plata(cfg.precioCielo)}; (b.piezas||[]).forEach(p=>{const q=cfg.piezas.find(x=>x.id===p.id); if(q){p.precio=plata(q.precio); p.nombre=q.nombre;}}); touch(true); toast('Precios actualizados');}},'Usar los de Ajustes'));
+  if(cambio)pr.push(h('button',{class:'cell tap link',onclick:()=>{b.precios={m2:plata(cfg.precioM2),ml:plata(cfg.precioMl),cielo:plata(cfg.precioCielo)}; touch(true); toast('Precios actualizados');}},'Usar los de Ajustes'));
   m.append(sec('Precios de este presupuesto',pr,'Se copiaron de Ajustes al crearlo. Si cambiás Ajustes, este presupuesto no cambia.'));
   m.append(sec('Recargos',rep,'El porcentaje se calcula sobre la mano de obra por m².'));
 
@@ -963,7 +970,7 @@ function vAjustes(){
   m.append(sec('Precios',[F('m² con 2 manos','precioM2',{money:true}),F('m² cielorraso (2 manos)','precioCielo',{money:true}),F('Metro lineal zócalo','precioMl',{money:true}),F('% mover muebles','recMuebles',{mode:'numeric'}),F('% trabajo en altura','recAltura',{mode:'numeric'}),rep,F('Validez del presupuesto (días)','validezDias',{mode:'numeric'})],'Se usan en los presupuestos nuevos; los que ya hiciste guardan sus propios precios. Con 1, 3 o 4 manos el precio se ajusta en proporción.'));
   const pzs=cfg.piezas.map((p,i)=>cell(inp(p,'nombre',{mode:'text',cfg:true,id:'pz'+i,cls:'tf left',label:'Nombre del trabajo',ph:'Ej: Puerta con marco'}),(e=>{e.addEventListener('input',()=>e.classList.toggle('falta',!plata(e.value))); return e;})(inp(p,'precio',{cfg:true,id:'pz'+i,cls:'box r'+(plata(p.precio)?'':' falta'),money:true,label:'Precio '+p.nombre})),h('button',{class:'xbtn red','aria-label':'Quitar trabajo',html:I.minus,onclick:()=>{cfg.piezas.splice(i,1);touchCfg(true);}})));
   pzs.push(h('button',{class:'cell tap link',onclick:()=>{cfg.piezas.push({id:uid(),nombre:'',precio:0}); focusId='pz'+(cfg.piezas.length-1)+'-nombre'; touchCfg(true);}},'Agregar trabajo'));
-  m.append(sec('Esmalte sintético por pieza',pzs,cfg.piezas.some(p=>!plata(p.precio))?'Poné el precio de cada trabajo (los que están en rojo todavía están en $0). Se usan con el botón Puertas y marcos de Medidas.':'Se usan con el botón Puertas y marcos de Medidas. Los presupuestos que ya hiciste guardan sus precios.'));
+  m.append(sec('Esmalte sintético por pieza',pzs,cfg.piezas.some(p=>!plata(p.precio))?'Son precios sugeridos: aparecen solos al elegir el trabajo en Medidas, y ahí los podés cambiar. Los que están en rojo están en $0.':'Son precios sugeridos: aparecen solos al elegir el trabajo en Medidas, y ahí los podés cambiar.'));
   m.append(sec('Valores por día',[F('Garage','garage',{money:true}),F('Comida','comida',{money:true}),F('Ayudante','ayudante',{money:true}),F('Día extra','diaExtra',{money:true})],'Se cargan solos en cada presupuesto nuevo. La nafta se pone a mano en cada presupuesto.'));
   const pc=cfg.productos.map((p,i)=>cell(inp(p,'nombre',{mode:'text',cfg:true,id:'p'+i,cls:'tf left',label:'Nombre de la pintura',ph:'Nombre'}),inp(p,'rend',{cfg:true,id:'p'+i,cls:'box pc',label:'Rendimiento m² por litro'}),h('span',{class:'v'},'m²/L'),h('button',{class:'xbtn red','aria-label':'Quitar pintura',html:I.minus,onclick:()=>{if(cfg.productos.length<2)return; cfg.productos.splice(i,1);touchCfg(true);}})));
   pc.push(h('button',{class:'cell tap link',onclick:()=>{cfg.productos.push({id:uid(),nombre:'',rend:12}); focusId='p'+(cfg.productos.length-1)+'-nombre'; touchCfg(true);}},'Agregar pintura'));
