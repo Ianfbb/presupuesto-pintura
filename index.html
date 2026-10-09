@@ -238,7 +238,7 @@ body.typing .tabbar,body.typing .acc{display:none}
 <script>
 (function(){
 "use strict";
-const VERSION='1.7';
+const VERSION='1.8';
 const SCHEMA=4;
 const $app=document.getElementById('app');
 const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
@@ -766,17 +766,21 @@ function tResumen(m,b){
 }
 
 /* --- Cliente --- */
-let shareFile=null;
+let shareFile=null, pdfFile=null;
 function tCliente(m,b){
   const img=h('img',{alt:'Presupuesto para '+(b.cliente||'el cliente')});
   m.append(h('div',{class:'sec'},h('div',{class:'group preview'},img)));
   let busy=0;
-  async function pintar(){const my=++busy; const cv=await dibujar(b); if(my!==busy)return; img.src=cv.toDataURL('image/png'); shareFile=null;
-    cv.toBlob(bl=>{if(my!==busy||!bl)return; shareFile=new File([bl],'Presupuesto '+(b.cliente||'pintura').replace(/[\\/:*?"<>|]/g,'')+'.png',{type:'image/png'});},'image/png');}
+  async function pintar(){const my=++busy; const cv=await dibujar(b); if(my!==busy)return; shareFile=null; pdfFile=null;
+    const nom='Presupuesto '+(b.cliente||'pintura').replace(/[\\/:*?"<>|]/g,'');
+    cv.toBlob(bl=>{if(my!==busy||!bl)return; img.src=URL.createObjectURL(bl); shareFile=new File([bl],nom+'.png',{type:'image/png'});},'image/png');
+    cv.toBlob(async bl=>{if(my!==busy||!bl)return; pdfFile=new File([armarPDF(new Uint8Array(await bl.arrayBuffer()),cv.width,cv.height)],nom+'.pdf',{type:'application/pdf'});},'image/jpeg',0.95);}
   pintar();
   m.append(h('div',{class:'sec stack'},
     h('button',{class:'pbtn',onclick:()=>compartirImagen(img)},svg(I.share),'Compartir imagen'),
-    h('button',{class:'pbtn sec2',onclick:()=>{copiar(textoWpp(b)); marcarEmitido();}},'Copiar texto para WhatsApp')));
+    h('button',{class:'pbtn sec2',onclick:()=>compartirPDF()},'Compartir PDF (máxima calidad)'),
+    h('button',{class:'pbtn sec2',onclick:()=>{copiar(textoWpp(b)); marcarEmitido();}},'Copiar texto para WhatsApp'),
+    h('div',{class:'sec-f'},'WhatsApp achica las fotos. Para que llegue nítida: mandá el PDF (llega tal cual), o al mandar la imagen tocá «HD» arriba antes de enviar.')));
   const vd=b.emitido?'Emitido el '+fecha(b.emitido):'La fecha se fija al compartir por primera vez';
   const fe=[cell(h('div',{class:'t'},'Válido hasta '+fecha(vence(b)),h('span',{class:'s'},vd)),inp(b,'validez',{cls:'box pc',mode:'numeric',label:'Días de validez',id:b.id+'-val',onchange:()=>render()}),h('span',{class:'v'},'días'))];
   if(b.emitido)fe.push(h('button',{class:'cell tap link',onclick:()=>{b.emitido=Date.now(); touch(true); toast('Fecha actualizada a hoy');}},'Usar la fecha de hoy'));
@@ -804,6 +808,28 @@ function tCliente(m,b){
   m.append(h('div',{class:'sec-f',style:'padding-top:16px'},'Si no se abre el menú para compartir, mantené apretada la imagen y elegí “Guardar en Fotos”.'));
 }
 function marcarEmitido(){const b=cur(); if(b&&!b.emitido){b.emitido=Date.now(); touch(true);}}
+function compartirPDF(){
+  if(pdfFile&&navigator.canShare&&navigator.canShare({files:[pdfFile]})){
+    navigator.share({files:[pdfFile]}).then(marcarEmitido).catch(e=>{if(e&&e.name!=='AbortError')toast('No se pudo compartir el PDF');});
+  }else if(pdfFile){descargar(pdfFile,false); marcarEmitido();}
+  else toast('Un segundo, se está armando el PDF');
+}
+// PDF de una sola página con la imagen del presupuesto (sin librerías: así funciona sin internet).
+function armarPDF(jpg,w,h){
+  const pw=595.28, ph=Math.round(pw*h/w*100)/100, enc=new TextEncoder(), parts=[]; let len=0; const offs=[];
+  const add=x=>{const u=typeof x==='string'?enc.encode(x):x; parts.push(u); len+=u.length;};
+  const obj=(n,body)=>{offs[n]=len; add(n+' 0 obj\n'); body(); add('\nendobj\n');};
+  add('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  obj(1,()=>add('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2,()=>add('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'));
+  obj(3,()=>add('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+pw+' '+ph+'] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>'));
+  const cs='q '+pw+' 0 0 '+ph+' 0 0 cm /Im0 Do Q';
+  obj(4,()=>add('<< /Length '+cs.length+' >>\nstream\n'+cs+'\nendstream'));
+  obj(5,()=>{add('<< /Type /XObject /Subtype /Image /Width '+w+' /Height '+h+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+jpg.length+' >>\nstream\n'); add(jpg); add('\nendstream');});
+  const x=len; add('xref\n0 6\n0000000000 65535 f \n'); for(let i=1;i<=5;i++)add(String(offs[i]).padStart(10,'0')+' 00000 n \n');
+  add('trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n'+x+'\n%%EOF');
+  return new Blob(parts,{type:'application/pdf'});
+}
 function compartirImagen(img){
   if(shareFile&&navigator.canShare&&navigator.canShare({files:[shareFile]})){
     navigator.share({files:[shareFile]}).then(marcarEmitido).catch(e=>{if(e&&e.name!=='AbortError')toast('Mantené apretada la imagen para guardarla');});
@@ -932,7 +958,9 @@ async function dibujar(b){
   }
   const mc=document.createElement('canvas').getContext('2d');
   const H=Math.ceil(lay(mc,false));
-  const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const ctx=cv.getContext('2d');
+  // Se dibuja al doble de resolución (o lo máximo que permite el iPhone) para que se vea nítido.
+  const E=Math.max(1,Math.min(2.5,Math.sqrt(15e6/(W*H))));
+  const cv=document.createElement('canvas'); cv.width=Math.round(W*E); cv.height=Math.round(H*E); const ctx=cv.getContext('2d'); ctx.scale(E,E);
   ctx.fillStyle=K.bg; ctx.fillRect(0,0,W,H); ctx.textBaseline='alphabetic';
   lay(ctx,true);
   return cv;
