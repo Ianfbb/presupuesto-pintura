@@ -106,6 +106,28 @@ textarea.area{border:0;background:transparent;width:100%;min-height:110px;resize
 .sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 3px 1px rgba(0,0,0,.06);transition:transform .2s}
 .sw[aria-checked="true"]{background:var(--green)}
 .sw[aria-checked="true"]::after{transform:translateX(20px)}
+.buy{gap:12px!important}
+.buy-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.buy-h .v{text-align:right;font-size:13px;color:var(--label2);flex:none}
+.buy-h .v b{display:block;font-size:17px;color:var(--label);font-weight:600}
+.buy-l{display:flex;align-items:center;gap:10px}
+.buy-l label{flex:1;color:var(--label2);font-size:15px}
+.buy-l .box{width:96px}
+.buy-e{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.envi{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--label2)}
+.envi .stp{align-self:flex-start;width:100%;justify-content:space-between}
+.buy-t{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:15px;color:var(--label2);min-height:28px}
+.buy-t b{color:var(--label)}
+.buy-t.mal,.buy-t.mal b{color:var(--red)}
+.lnk{border:0;background:none;color:var(--blue);font-size:15px;padding:4px 0}
+.addp{position:relative}
+.addp select{position:absolute;inset:0;opacity:0;width:100%;height:100%;font-size:16px}
+.prow{display:flex;align-items:center;gap:12px;min-width:0}
+.prow .tf{flex:1;min-width:0}
+.prow .v{color:var(--label2);flex:none}
+.envrow{display:flex;align-items:center;gap:10px;font-size:15px;color:var(--label2)}
+.envrow label{flex:none}
+.envrow .tf{flex:1;text-align:right}
 .stp{display:flex;align-items:center;background:var(--fill);border-radius:100px;height:34px;flex:none}
 .stp button{border:0;background:transparent;width:44px;height:34px;font-size:22px;font-weight:400;line-height:1;color:var(--label)}
 .stp b{min-width:22px;text-align:center;font-size:17px}
@@ -238,7 +260,7 @@ body.typing .tabbar,body.typing .acc{display:none}
 <script>
 (function(){
 "use strict";
-const VERSION='1.8';
+const VERSION='1.9';
 const SCHEMA=4;
 const $app=document.getElementById('app');
 const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
@@ -299,7 +321,7 @@ const DEF_CFG={
   materiales:['Rodillo pelo corto','Rodillo pelo largo (grueso)','Rodillo antigota 22 cm','Rodillo para epoxi','Pincel N°15','Pincel chico','Batea / cubeta','Cinta de papel 24 mm','Cartón rollo (pisos)','Film / plástico protector','Fijador','Enduido','Lija'],
   herramientas:['Escalera','Destornillador (latas)','Taladro cargado','Mezclador para taladro','Espátula','Metro','Secador'],
   garage:0, comida:0, ayudante:0, diaExtra:0,
-  recMuebles:10, recAltura:15, recRep:[0,5,15,25], recCielo:0, validezDias:15,
+  recMuebles:10, recAltura:15, recRep:[0,5,15,25], recCielo:0, margenPintura:0, validezDias:15,
   incluye:'Protección de pisos y muebles\nPreparación de superficies (lijado y detalles)',
   aclaraciones:'Materiales a cargo del cliente (no incluidos en la mano de obra).\nSe reserva con seña del 40% de la mano de obra.\nEl presupuesto es en base al estado actual. No incluye arreglos mayores (humedad, revoque).\nCualquier extra se avisa antes.'
 };
@@ -321,7 +343,7 @@ function nuevo(){
     ambientes:[nuevoAmb('Ambiente 1',f.pinturas)],
     muebles:{on:false,pct:cfg.recMuebles},altura:{on:false,pct:cfg.recAltura},reparacion:{nivel:0,pct:0},
     extras:[],diasExtra:{cant:'',valor:cfg.diaExtra||'',ver:false},garage:{cant:'',valor:cfg.garage||'',ver:false},comida:{cant:'',valor:cfg.comida||'',ver:false},
-    nafta:{monto:'',ver:false},ayudante:{cant:'',valor:cfg.ayudante||'',cobrar:true,ver:false},redondeo:1000,materiales:{},herramientas:{},
+    nafta:{monto:'',ver:false},ayudante:{cant:'',valor:cfg.ayudante||'',cobrar:true,ver:false},redondeo:1000,materiales:{},herramientas:{},compra:{},
     aclaraciones:cfg.aclaraciones,img:{precios:'total',redImp:0,redM2:false,incluye:true,materiales:true,aclaraciones:true,oscuro:false},incluye:null,notas:''},f);
 }
 // Completa lo que falte. Lo que no tenga copia propia se toma de 'base' (los Ajustes de cuando se guardó).
@@ -340,6 +362,7 @@ function norm(b,base){
   if(typeof o.img.precios!=='string')o.img.precios=o.img.precios?'detalle':'total';
   o.ambientes=(o.ambientes||[]).map(a=>({id:a.id||uid(),nombre:a.nombre||'',sups:(a.sups||[]).map(s=>Object.assign(nuevaSup(),s,{medidas:(s.medidas||[]).map(m=>Object.assign(nuevaMed(),m))}))}));
   o.extras=(o.extras||[]).map(e=>Object.assign({id:uid(),desc:'',monto:''},e));
+  o.compra=(o.compra&&typeof o.compra==='object'&&!Array.isArray(o.compra))?o.compra:{};
   o.materiales=(o.materiales&&typeof o.materiales==='object')?o.materiales:{}; o.herramientas=(o.herramientas&&typeof o.herramientas==='object')?o.herramientas:{};
   return o;
 }
@@ -371,14 +394,44 @@ function supQty(s){let t=0; for(const m of s.medidas){const v=medQty(s,m); t+=m.
 function supSub(b,s){const r=1+num(s.recargo)/100; if(s.unidad==='u')return s.medidas.reduce((t,m)=>t+veces(m)*precioPz(b,m),0)*r; return supQty(s)*precioUnit(b,s)*r;}
 function precioAuto(b,s){return plata(s.unidad==='ml'?b.precios.ml:esCielo(s)?b.precios.cielo:b.precios.m2)*(num(s.manos)||2)/2;}
 function precioUnit(b,s){return String(s.precio).trim()!==''?plata(s.precio):precioAuto(b,s);}
-function latas(L){
-  if(L<=0)return '';
-  const sizes=[20,10,4,1]; let best=null;
-  for(let a=0;a<=Math.ceil(L/20)+1;a++)for(let b=0;b<=2;b++)for(let c=0;c<=3;c++)for(let d=0;d<=3;d++){
-    const tot=a*20+b*10+c*4+d; if(tot<L-0.05)continue; const n=a+b+c+d;
-    if(!best||tot<best.tot||(tot===best.tot&&n<best.n))best={tot,n,c:[a,b,c,d]};
-  }
-  return best.c.map((n,i)=>n?`${n} × ${sizes[i]} L`:'').filter(Boolean).join(' + ');
+// ---- Pintura a comprar ----
+// Zócalos: se calculan como una franja de 10 cm. Puertas y marcos: m² estimados por pieza.
+const ANCHO_ZOCALO=0.10, PZ_M2={puerta2:4,puerta1:2,marco2:1.2,marco1:0.6,escalera:6};
+// Envases en que viene cada pintura (litros). Se puede cambiar en Ajustes.
+function envDe(p){
+  const ce=p&&!p.env?(cfg.productos.find(x=>x.id===p.id)||{}).env:'';
+  const l=String((p&&p.env)||ce||'').split(/\s*[;\/]\s*|,\s+|\s+/).map(x=>num(x.replace(/,$/,''))).filter(x=>x>0);
+  if(l.length)return [...new Set(l)].sort((a,b)=>b-a);
+  return /esmalte|sint[eé]tico|barniz|epoxi/i.test((p&&p.nombre)||'')?[4,1,0.5]:[20,10,4,1];
+}
+// Elige qué envases comprar: cubre los litros gastando lo menos posible
+// (un envase grande sale más barato por litro que varios chicos) y sin llenarse de latitas.
+function elegirEnv(L,sizes){
+  const cnt=sizes.map(()=>0); if(!(L>0.05)||!sizes.length)return cnt;
+  const costo=x=>Math.pow(x,0.85)+0.3; let best=null;
+  (function rec(i,rem,c){
+    if(best&&c>=best.tot)return;
+    if(i===sizes.length-1){const n=rem>0.05?Math.ceil(rem/sizes[i]-1e-6):0; cnt[i]=n; const tot=c+n*costo(sizes[i]); if(!best||tot<best.tot-1e-9)best={tot,c:cnt.slice()}; return;}
+    const max=Math.ceil(Math.max(0,rem-0.05)/sizes[i]-1e-6);
+    for(let n=max;n>=0;n--){cnt[i]=n; rec(i+1,rem-n*sizes[i],c+n*costo(sizes[i]));}
+  })(0,L,0);
+  return best.c;
+}
+const envNom=(x,n)=>n+' '+(x>=10?(n===1?'balde':'baldes'):(n===1?'lata':'latas'))+' de '+f2(x)+' L';
+const envTxt=o=>o.env.filter(x=>x.n).map(x=>envNom(x.s,x.n)).join(' + ');
+const litrosTxt=L=>f2(Math.ceil(L*10-1e-6)/10)+' L';
+// Una fila por pintura: litros calculados, litros a comprar (los tuyos si los escribiste) y envases.
+function compra(b,c){
+  c=c||calc(b); const by={}, mg=1+num(cfg.margenPintura)/100, cc=b.compra||{};
+  c.pp.forEach(x=>{if(!x.p)return; const o=by[x.p.id]=by[x.p.id]||{p:x.p,calc:0,m2:0,ml:0,u:0,manos:new Set()};
+    o.calc+=x.litros; o[x.unidad==='ml'?'ml':x.unidad==='u'?'u':'m2']+=x.q; if(x.unidad==='m2')x.manos.forEach(m=>o.manos.add(m));});
+  Object.keys(cc).forEach(id=>{if(!by[id]&&cc[id]&&cc[id].extra){const p=prodDe(b,id)||cfg.productos.find(x=>x.id===id); if(p)by[id]={p,calc:0,m2:0,ml:0,u:0,manos:new Set(),extra:true};}});
+  return Object.values(by).map(o=>{
+    const e=cc[o.p.id]||{}, sizes=envDe(o.p), sug=o.calc*mg, tl=String(e.litros==null?'':e.litros).trim();
+    const litros=tl!==''?num(tl):sug, auto=elegirEnv(litros,sizes), man=!!(e.env&&typeof e.env==='object');
+    const env=sizes.map((x,i)=>({s:x,n:man?Math.max(0,Math.round(num(e.env[x]))):auto[i]}));
+    return Object.assign(o,{sizes,sug,litros,editado:tl!=='',manual:man,env,total:env.reduce((t,x)=>t+x.s*x.n,0)});
+  }).filter(o=>o.litros>0.05||o.extra||o.manual);
 }
 const tipoKey=n=>{const s=String(n||'Otro').trim(); return s.charAt(0).toUpperCase()+s.slice(1);};
 function calc(b){
@@ -391,7 +444,7 @@ function calc(b){
       const p=prodDe(b,s.producto);
       if(q>0){
         const k=(p?p.id:'?')+'|'+s.unidad; pp[k]=pp[k]||{p,unidad:s.unidad,q:0,litros:0,manos:new Set()}; pp[k].q+=q; pp[k].manos.add(s.manos);
-        if(p&&s.unidad==='m2')pp[k].litros+=q*s.manos/(num(p.rend)||12);
+        if(p){const area=s.unidad==='m2'?q:s.unidad==='ml'?q*ANCHO_ZOCALO:s.medidas.reduce((t,m)=>t+veces(m)*(PZ_M2[m.pieza]||1.5),0); pp[k].litros+=area*(num(s.manos)||2)/(num(p.rend)||12);}
         const tk=tipoKey(s.nombre)+'|'+s.unidad; porTipo[tk]=porTipo[tk]||{nombre:tipoKey(s.nombre),unidad:s.unidad,q:0,sub:0}; porTipo[tk].q+=q; porTipo[tk].sub+=sub;
       }
       const r={a,s,q,pu,sub,p}; if(s.unidad==='u')r.piezas=s.medidas.filter(m=>veces(m)>0).map(m=>{const pr=precioPz(b,m); return {nombre:nomPz(b,m),cant:veces(m),precio:pr,sub:veces(m)*pr*(1+num(s.recargo)/100)};});
@@ -719,16 +772,37 @@ function totales(el,b){
 
 /* --- Materiales --- */
 function tMateriales(m,b){
-  m.append(h('div',{class:'sec'},h('div',{class:'sec-h'},'Pintura necesaria'),out(h('div',{class:'group'}),el=>{
-    const c=calc(b); el.innerHTML='';
-    const ps=c.pp.filter(x=>x.unidad==='m2');
-    if(!ps.length&&!c.pp.length){el.append(cell(h('span',{class:'t',style:'color:var(--label2)'},'Cargá medidas y acá aparecen los litros por pintura.')));return;}
-    ps.forEach(x=>{const L=x.litros; const ms=[...x.manos].sort();
-      el.append(cell(h('div',{class:'t'},x.p?x.p.nombre:'Sin pintura elegida',h('span',{class:'s num'},f2(x.q)+' m² · '+ms.join('/')+' mano'+(ms.some(v=>v>1)?'s':''))),
-        h('div',{class:'v num'},h('b',{style:'display:block;color:var(--blue);font-size:17px'},'≈ '+f2(Math.ceil(L*10)/10)+' L'),h('span',{style:'font-size:15px'},latas(L)))));});
-    c.pp.filter(x=>x.unidad==='ml').forEach(x=>el.append(cell(h('div',{class:'t'},x.p?x.p.nombre:'Sin pintura',h('span',{class:'s num'},f2(x.q)+' ml de zócalos')),h('div',{class:'v'},'1 L suele alcanzar'))));
-    c.pp.filter(x=>x.unidad==='u').forEach(x=>el.append(cell(h('div',{class:'t'},x.p?x.p.nombre:'Sin pintura',h('span',{class:'s num'},uTxt(x.q,'u')+' (puertas y marcos)')),h('div',{class:'v'},x.q>4?'2 a 4 L':'1 L suele alcanzar'))));
-  }),h('div',{class:'sec-f'},'El rendimiento de cada pintura se cambia en Ajustes.')));
+  const lista=compra(b), cc=b.compra;
+  const usoDe=o=>[o.m2?f2(o.m2)+' m² · '+[...o.manos].sort().join('/')+' mano'+([...o.manos].some(v=>v>1)?'s':''):'',o.ml?f2(o.ml)+' ml de zócalos':'',o.u?uTxt(o.u,'u'):''].filter(Boolean).join(' + ');
+  const filas=lista.map(o=>{
+    const id=o.p.id, e=cc[id]=cc[id]||{litros:''};
+    const fila=h('div',{class:'cell col buy'});
+    fila.append(h('div',{class:'buy-h'},h('div',{class:'t'},o.p.nombre||'Pintura',h('span',{class:'s num'},o.extra?'Agregada a mano':usoDe(o)+' · rinde '+f2(num(o.p.rend)||12)+' m²/L')),
+      o.extra?h('button',{class:'xbtn','aria-label':'Quitar '+o.p.nombre,html:I.xc,onclick:()=>{delete cc[id]; touch(true);}}):h('div',{class:'v num'},'Cálculo',h('b',null,'≈ '+litrosTxt(o.sug)))));
+    fila.append(h('div',{class:'buy-l'},h('label',{for:'buy'+id+'-litros'},'Litros a comprar'),inp(e,'litros',{id:'buy'+id,cls:'box r',ph:o.sug>0.05?f2(Math.ceil(o.sug*10-1e-6)/10):'0',label:'Litros a comprar de '+o.p.nombre,onchange:()=>render()}),h('span',{class:'v'},'L')));
+    // Envases: se recalculan solos mientras escribís; si tocás + o −, quedan los tuyos.
+    fila.append(out(h('div',{class:'buy-e'}),el=>{
+      const x=compra(b).find(q=>q.p.id===id); el.innerHTML=''; if(!x)return;
+      x.env.forEach(v=>{const set=n=>{const m={}; x.env.forEach(w=>{m[w.s]=w.n;}); m[v.s]=Math.max(0,n); e.env=m; touch(false);};
+        el.append(h('div',{class:'envi'},h('span',null,(v.s>=10?'Balde ':'Lata ')+f2(v.s)+' L'),h('div',{class:'stp'+(v.n?' on':'')},h('button',{'aria-label':'Menos '+f2(v.s)+' litros',onclick:()=>set(v.n-1)},'−'),h('b',{class:'num'},String(v.n)),h('button',{'aria-label':'Más '+f2(v.s)+' litros',onclick:()=>set(v.n+1)},'+'))));});
+      const falta=x.litros-x.total;
+      el.append(h('div',{class:'buy-t'+(falta>0.05?' mal':'')},x.total?h('span',null,'Comprás ',h('b',{class:'num'},f2(x.total)+' L'),falta>0.05?' · faltan '+litrosTxt(falta):(x.total-x.litros>0.05?' · sobran '+f2(Math.floor((x.total-x.litros)*10+1e-6)/10)+' L':'')):h('span',null,'Sin envases'),
+        (x.manual||x.editado)?h('button',{class:'lnk',onclick:()=>{e.litros=''; delete e.env; touch(true); toast('Volvió al cálculo automático');}},'Volver al cálculo'):null));
+    }));
+    return fila;
+  });
+  if(!filas.length)filas.push(cell(h('span',{class:'t',style:'color:var(--label2)'},'Cargá medidas y acá aparecen los litros y los envases de cada pintura.')));
+  const libres=unicos([...b.pinturas,...cfg.productos].map(p=>p.id)).map(id=>prodDe(b,id)||cfg.productos.find(p=>p.id===id)).filter(p=>p&&!lista.some(o=>o.p.id===p.id));
+  if(libres.length){const ps=h('select',{'aria-label':'Agregar otra pintura'},[h('option',{value:''},'Agregar otra pintura'),...libres.map(p=>h('option',{value:p.id},p.nombre||'Sin nombre'))]);
+    ps.addEventListener('change',()=>{if(!ps.value)return; if(!prodDe(b,ps.value)){const p=cfg.productos.find(x=>x.id===ps.value); if(p)b.pinturas.push(clone(p));} cc[ps.value]={litros:'',extra:true}; focusId='buy'+ps.value+'-litros'; touch(true);});
+    filas.push(h('label',{class:'cell tap link addp'},h('span',null,'Agregar otra pintura'),ps));}
+  m.append(sec('Pintura a comprar',filas,'Litros = m² × manos ÷ rendimiento'+(num(cfg.margenPintura)?' + '+f2(num(cfg.margenPintura))+'% de margen':'')+'. Podés escribir otros litros o cambiar los envases con + y −. El rendimiento, los envases y el margen se cambian en Ajustes.'));
+  let prepT; const prep=()=>{clearTimeout(prepT); prepT=setTimeout(()=>prepararCompra(b),350);};
+  m.append(h('div',{class:'sec stack'},out(h('span',{hidden:''}),prep),
+    h('button',{class:'pbtn',onclick:()=>compartirCompra('pdf')},svg(I.share),'Compartir lista de compra (PDF)'),
+    h('button',{class:'pbtn sec2',onclick:()=>compartirCompra('png')},'Compartir como imagen'),
+    h('button',{class:'pbtn sec2',onclick:()=>copiar(textoCompra(b))},'Copiar como texto'),
+    h('div',{class:'sec-f'},'Es tu lista: pinturas con sus envases, materiales y lo que llevás vos. No tiene precios.')));
 
   const mats=unicos([...b.materialesLista,...cfg.materiales]).map(n=>{const v=b.materiales[n]||0;
     return cell(h('span',{class:'t'},n),h('div',{class:'stp'+(v?' on':'')},h('button',{'aria-label':'Menos '+n,onclick:()=>{b.materiales[n]=Math.max(0,(b.materiales[n]||0)-1);touch(true);}},'−'),h('b',{class:'num'},String(v)),h('button',{'aria-label':'Más '+n,onclick:()=>{b.materiales[n]=(b.materiales[n]||0)+1; if(!b.materialesLista.includes(n))b.materialesLista.push(n); touch(true);}},'+')));});
@@ -853,10 +927,70 @@ function incluyeAuto(b){
   if(b.altura.on)l.push('Trabajo en altura (andamios y escaleras)');
   return l;
 }
+function textoCompra(b){
+  const L=['*LISTA DE COMPRA*'+(b.cliente?' · '+b.cliente:'')]; if(b.direccion)L.push(b.direccion);
+  const cs=compra(b).filter(o=>o.total>0||o.litros>0.05);
+  if(cs.length){L.push(''); L.push('*Pintura*'); cs.forEach(o=>L.push('• '+o.p.nombre+': '+(envTxt(o)||'sin envases')+' ('+f2(o.total)+' L)'));}
+  const ms=Object.entries(b.materiales).filter(([k,v])=>v>0); if(ms.length){L.push(''); L.push('*Materiales*'); ms.forEach(([k,v])=>L.push('• '+v+' × '+k));}
+  const hs=Object.entries(b.herramientas).filter(([k,v])=>v); if(hs.length){L.push(''); L.push('*Llevo yo*'); hs.forEach(([k])=>L.push('• '+k));}
+  return L.join('\n');
+}
+// Imagen de la lista de compra (siempre con fondo negro).
+function dibujarCompra(b){
+  const W=1080,P=84,K={bg:'#000000',ink:'#F5F5F7',mut:'#98989D',line:'#38383A',hair:'#2C2C2E',acc:'#2997FF'};
+  const FT='-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif', FD='-apple-system,"SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif';
+  const cs=compra(b).filter(o=>o.total>0||o.litros>0.05), ms=Object.entries(b.materiales).filter(([k,v])=>v>0), hs=Object.entries(b.herramientas).filter(([k,v])=>v).map(x=>x[0]);
+  function lay(ctx,draw){
+    let y=P+36;
+    const set=(f,col)=>{ctx.font=f; ctx.fillStyle=col;};
+    const T=(t,x,yy,al)=>{if(draw){ctx.textAlign=al||'left'; ctx.fillText(t,x,yy);}};
+    const rule=(yy,col,hgt)=>{if(draw){ctx.fillStyle=col||K.line; ctx.fillRect(P,yy,W-2*P,hgt||2);}};
+    const cap=(t,x,yy,al)=>{set('600 22px '+FT,K.mut); if(draw&&'letterSpacing' in ctx)ctx.letterSpacing='2.5px'; T(t.toUpperCase(),x,yy,al); if(draw&&'letterSpacing' in ctx)ctx.letterSpacing='0px';};
+    const lines=(t,maxW)=>{const out=[]; let l=''; for(const w of String(t).split(/\s+/)){const x=l?l+' '+w:w; if(ctx.measureText(x).width>maxW&&l){out.push(l);l=w;}else l=x;} if(l)out.push(l); return out;};
+    set('700 46px '+FD,K.ink); T('Lista de compra',P,y); y+=46;
+    set('400 28px '+FT,K.mut); T([b.cliente,b.direccion].filter(Boolean).join(' · ')||'Trabajo de pintura',P,y); T(nro(b.numero)+' · '+fecha(Date.now()),W-P,y,'right');
+    y+=42; rule(y); y+=76;
+    if(cs.length){
+      cap('Pintura',P,y); cap('Litros',W-P,y,'right'); y+=24; rule(y); y+=62;
+      cs.forEach((o,i)=>{
+        set('600 34px '+FT,K.ink); T(o.p.nombre||'Pintura',P,y); T(f2(o.total)+' L',W-P,y,'right'); y+=46;
+        set('500 30px '+FT,K.acc); lines(envTxt(o)||'Sin envases',W-2*P).forEach(l=>{T(l,P,y); y+=40;});
+        const uso=[o.m2?f2(o.m2)+' m² · '+[...o.manos].sort().join('/')+' mano'+([...o.manos].some(v=>v>1)?'s':''):'',o.ml?f2(o.ml)+' ml de zócalos':'',o.u?uTxt(o.u,'u'):''].filter(Boolean).join(' + ');
+        set('400 26px '+FT,K.mut); T((uso?uso+' · ':'')+'necesita '+litrosTxt(o.litros),P,y+2); y+=30;
+        if(i<cs.length-1){rule(y,K.hair); y+=58;} else y+=54;
+      });
+    }
+    const bloque=(tit,arr)=>{if(!arr.length)return; cap(tit,P,y); y+=24; rule(y); y+=58;
+      arr.forEach(([a,t])=>{set('600 30px '+FT,K.ink); T(a,P,y); set('400 30px '+FT,K.ink); const ls=lines(t,W-2*P-90); ls.forEach((l,k)=>{T(l,P+90,y); if(k<ls.length-1)y+=40;}); y+=50;}); y+=40;};
+    bloque('Materiales',ms.map(([k,v])=>[v+' ×',k]));
+    bloque('Llevo yo',hs.map(k=>['·',k]));
+    if(!cs.length&&!ms.length&&!hs.length){set('400 30px '+FT,K.mut); T('Todavía no hay nada para comprar.',P,y); y+=60;}
+    set('400 24px '+FT,K.mut); T('Litros estimados según el rendimiento de cada pintura.',P,y);
+    return y+P;
+  }
+  const H=Math.ceil(lay(document.createElement('canvas').getContext('2d'),false));
+  const E=Math.max(1,Math.min(2.5,Math.sqrt(15e6/(W*H))));
+  const cv=document.createElement('canvas'); cv.width=Math.round(W*E); cv.height=Math.round(H*E); const ctx=cv.getContext('2d'); ctx.scale(E,E);
+  ctx.fillStyle=K.bg; ctx.fillRect(0,0,W,H); ctx.textBaseline='alphabetic'; lay(ctx,true);
+  return cv;
+}
+// Se arma por adelantado: el iPhone solo deja compartir si el archivo ya está listo al tocar el botón.
+let compraFiles={};
+function prepararCompra(b){
+  compraFiles={}; if(cur()!==b)return; const mine=compraFiles; const cv=dibujarCompra(b);
+  const nom='Lista de compra '+(b.cliente||'pintura').replace(/[\\/:*?"<>|]/g,'');
+  cv.toBlob(bl=>{if(bl)mine.png=new File([bl],nom+'.png',{type:'image/png'});},'image/png');
+  cv.toBlob(async bl=>{if(bl)mine.pdf=new File([armarPDF(new Uint8Array(await bl.arrayBuffer()),cv.width,cv.height)],nom+'.pdf',{type:'application/pdf'});},'image/jpeg',0.95);
+}
+function compartirCompra(tipo){
+  const f=compraFiles[tipo];
+  if(!f){toast('Un segundo, se está armando la lista'); return;}
+  if(navigator.canShare&&navigator.canShare({files:[f]}))navigator.share({files:[f]}).catch(e=>{if(e&&e.name!=='AbortError')toast('No se pudo compartir');});
+  else descargar(f,false);
+}
 function matList(b,c){
   const l=[];
-  c.pp.filter(x=>x.unidad==='m2'&&x.p&&x.litros>0).forEach(x=>l.push(x.p.nombre+': '+latas(x.litros)));
-  c.pp.filter(x=>(x.unidad==='ml'||x.unidad==='u')&&x.p).forEach(x=>{if(!l.some(s=>s.startsWith(x.p.nombre+':')))l.push(x.p.nombre+': '+(x.unidad==='u'&&x.q>4?'2 a 4 L':'1 L'));});
+  compra(b,c).forEach(o=>{const t=envTxt(o); if(t)l.push(o.p.nombre+': '+t);});
   Object.entries(b.materiales).filter(([k,v])=>v>0).forEach(([k,v])=>l.push(v+' × '+k));
   return l;
 }
@@ -1023,9 +1157,11 @@ function vAjustes(){
   pzs.push(h('button',{class:'cell tap link',onclick:()=>{cfg.piezas.push({id:uid(),nombre:'',precio:0}); focusId='pz'+(cfg.piezas.length-1)+'-nombre'; touchCfg(true);}},'Agregar trabajo'));
   m.append(sec('Esmalte sintético por pieza',pzs,cfg.piezas.some(p=>!plata(p.precio))?'Son precios sugeridos: aparecen solos al elegir el trabajo en Medidas, y ahí los podés cambiar. Los que están en rojo están en $0.':'Son precios sugeridos: aparecen solos al elegir el trabajo en Medidas, y ahí los podés cambiar.'));
   m.append(sec('Valores por día',[F('Garage','garage',{money:true}),F('Comida','comida',{money:true}),F('Ayudante','ayudante',{money:true}),F('Día extra','diaExtra',{money:true})],'Se cargan solos en cada presupuesto nuevo. La nafta se pone a mano en cada presupuesto.'));
-  const pc=cfg.productos.map((p,i)=>cell(inp(p,'nombre',{mode:'text',cfg:true,id:'p'+i,cls:'tf left',label:'Nombre de la pintura',ph:'Nombre'}),inp(p,'rend',{cfg:true,id:'p'+i,cls:'box pc',label:'Rendimiento m² por litro'}),h('span',{class:'v'},'m²/L'),h('button',{class:'xbtn red','aria-label':'Quitar pintura',html:I.minus,onclick:()=>{if(cfg.productos.length<2)return; cfg.productos.splice(i,1);touchCfg(true);}})));
+  const pc=cfg.productos.map((p,i)=>h('div',{class:'cell col'},h('div',{class:'prow'},inp(p,'nombre',{mode:'text',cfg:true,id:'p'+i,cls:'tf left',label:'Nombre de la pintura',ph:'Nombre'}),inp(p,'rend',{cfg:true,id:'p'+i,cls:'box pc',label:'Rendimiento m² por litro'}),h('span',{class:'v'},'m²/L'),h('button',{class:'xbtn red','aria-label':'Quitar pintura',html:I.minus,onclick:()=>{if(cfg.productos.length<2)return; cfg.productos.splice(i,1);touchCfg(true);}})),
+    h('div',{class:'envrow'},h('label',{for:'p'+i+'-env'},'Envases (L)'),inp(p,'env',{mode:'text',cfg:true,id:'p'+i,cls:'tf',label:'Envases en litros de '+p.nombre,ph:envDe({nombre:p.nombre}).map(x=>f2(x)).join(' · ')}))));
   pc.push(h('button',{class:'cell tap link',onclick:()=>{cfg.productos.push({id:uid(),nombre:'',rend:12}); focusId='p'+(cfg.productos.length-1)+'-nombre'; touchCfg(true);}},'Agregar pintura'));
-  m.append(sec('Pinturas y rendimiento',pc,'Rendimiento: m² que cubre 1 litro en una mano.'));
+  pc.push(cell(h('label',{class:'t',for:'cfg-margenPintura'},'Margen extra de pintura',h('span',{class:'s'},'Se suma a los litros calculados')),inp(cfg,'margenPintura',{cfg:true,id:'cfg',cls:'box pc',mode:'numeric',label:'Margen extra de pintura en porcentaje',ph:'0'}),h('span',{class:'v'},'%')));
+  m.append(sec('Pinturas, rendimiento y envases',pc,'Rendimiento: m² que cubre 1 litro en una mano. Envases: los tamaños en que la comprás, separados por espacio (ej: 20 10 4 1). Si lo dejás vacío se usan los que se ven en gris.'));
   const lista=(title,arr,key)=>{const ni=h('input',{class:'tf left',placeholder:'Agregar',id:'add-'+key,'aria-label':'Agregar a '+title,autocapitalize:'sentences'});
     return sec(title,[...arr.map((n,i)=>cell(h('span',{class:'t'},n),h('button',{class:'xbtn red','aria-label':'Quitar '+n,html:I.minus,onclick:()=>{arr.splice(i,1);touchCfg(true);}}))),
       cell(ni,h('button',{class:'xbtn',style:'color:var(--blue);width:auto;padding:0 4px;font-weight:600;font-size:17px',onclick:()=>{const v=ni.value.trim(); if(v&&!arr.includes(v)){arr.push(v);focusId='add-'+key;touchCfg(true);}}},'Agregar'))]);};
@@ -1050,7 +1186,7 @@ if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostn
     reg.addEventListener('updatefound',()=>{const w=reg.installing; if(!w)return; w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)toast('Hay una versión nueva: cerrá y volvé a abrir la app');});});
   }).catch(()=>{});
 }
-window.__calc=calc; window.__norm=norm; window.__texto=textoWpp; window.__dibujar=dibujar; window.__migrar=migrar;
+window.__calc=calc; window.__norm=norm; window.__texto=textoWpp; window.__compra=compra; window.__textoCompra=textoCompra; window.__dibujar=dibujar; window.__migrar=migrar;
 })();
 </script>
 </body>
