@@ -119,6 +119,14 @@ textarea.area{border:0;background:transparent;width:100%;min-height:110px;resize
 .buy-t{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:15px;color:var(--label2);min-height:28px}
 .buy-t b{color:var(--label)}
 .buy-t.mal,.buy-t.mal b{color:var(--red)}
+.pago{gap:10px!important}
+.pg1{display:flex;align-items:center;gap:10px}
+.pg2{display:flex;align-items:center;gap:10px}
+.pg2 .date{flex:1;width:auto;min-width:0;height:36px;padding:0 12px;text-align:left;font-size:16px;border-radius:100px;-webkit-appearance:none;appearance:none;color:var(--label)}
+.pg3{font-size:14px;color:var(--label2)}
+.pg4{display:flex;justify-content:space-between;gap:12px}
+.item .t .s.est{color:var(--blue);font-weight:500}
+.item .t .s.est.ok{color:var(--green)}
 .lnk{border:0;background:none;color:var(--blue);font-size:15px;padding:4px 0}
 .addp{position:relative}
 .addp select{position:absolute;inset:0;opacity:0;width:100%;height:100%;font-size:16px}
@@ -260,8 +268,8 @@ body.typing .tabbar,body.typing .acc{display:none}
 <script>
 (function(){
 "use strict";
-const VERSION='1.9';
-const SCHEMA=4;
+const VERSION='1.10';
+const SCHEMA=5;
 const $app=document.getElementById('app');
 const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-5);
 const clone=x=>JSON.parse(JSON.stringify(x));
@@ -279,6 +287,22 @@ const $=n=>'$'+Math.round(n).toLocaleString('es-AR');
 const fecha=t=>new Date(t).toLocaleDateString('es-AR',{day:'numeric',month:'short',year:'numeric'});
 const fechaC=t=>new Date(t).toLocaleDateString('es-AR',{day:'numeric',month:'short'});
 const nro=n=>'N° '+String(n||1).padStart(4,'0');
+const hoyISO=()=>{const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const deISO=iso=>{const a=String(iso||'').split('-').map(Number); const d=new Date(a[0],(a[1]||1)-1,a[2]||1); return isNaN(d)?new Date():d;};
+const fechaLarga=iso=>deISO(iso).toLocaleDateString('es-AR',{day:'numeric',month:'long',year:'numeric'});
+// Número en letras, para los recibos: 432800 → "cuatrocientos treinta y dos mil ochocientos"
+function enLetras(n){
+  n=Math.round(Math.abs(n)); if(!n)return 'cero';
+  const U=['','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve','diez','once','doce','trece','catorce','quince','dieciséis','diecisiete','dieciocho','diecinueve','veinte','veintiuno','veintidós','veintitrés','veinticuatro','veinticinco','veintiséis','veintisiete','veintiocho','veintinueve'];
+  const D=['','','','treinta','cuarenta','cincuenta','sesenta','setenta','ochenta','noventa'], C=['','ciento','doscientos','trescientos','cuatrocientos','quinientos','seiscientos','setecientos','ochocientos','novecientos'];
+  const c3=x=>{if(x===100)return 'cien'; const r=x%100; return [C[Math.floor(x/100)],r<30?U[r]:D[Math.floor(r/10)]+(r%10?' y '+U[r%10]:'')].filter(Boolean).join(' ');};
+  const apo=t=>t.replace(/veintiuno$/,'veintiún').replace(/uno$/,'un');
+  const mill=Math.floor(n/1e6), mil=Math.floor(n%1e6/1000), r=n%1000, o=[];
+  if(mill)o.push(mill===1?'un millón':apo(mill<1000?c3(mill):enLetras(mill))+' millones');
+  if(mil)o.push(mil===1?'mil':apo(c3(mil))+' mil');
+  if(r)o.push(c3(r));
+  return o.join(' ');
+}
 
 /* Íconos (trazo estilo SF) */
 const I={
@@ -321,7 +345,7 @@ const DEF_CFG={
   materiales:['Rodillo pelo corto','Rodillo pelo largo (grueso)','Rodillo antigota 22 cm','Rodillo para epoxi','Pincel N°15','Pincel chico','Batea / cubeta','Cinta de papel 24 mm','Cartón rollo (pisos)','Film / plástico protector','Fijador','Enduido','Lija'],
   herramientas:['Escalera','Destornillador (latas)','Taladro cargado','Mezclador para taladro','Espátula','Metro','Secador'],
   garage:0, comida:0, ayudante:0, diaExtra:0,
-  recMuebles:10, recAltura:15, recRep:[0,5,15,25], recCielo:0, margenPintura:0, validezDias:15,
+  recMuebles:10, recAltura:15, recRep:[0,5,15,25], recCielo:0, margenPintura:0, validezDias:15, senaPct:40,
   incluye:'Protección de pisos y muebles\nPreparación de superficies (lijado y detalles)',
   aclaraciones:'Materiales a cargo del cliente (no incluidos en la mano de obra).\nSe reserva con seña del 40% de la mano de obra.\nEl presupuesto es en base al estado actual. No incluye arreglos mayores (humedad, revoque).\nCualquier extra se avisa antes.'
 };
@@ -344,6 +368,7 @@ function nuevo(){
     muebles:{on:false,pct:cfg.recMuebles},altura:{on:false,pct:cfg.recAltura},reparacion:{nivel:0,pct:0},
     extras:[],diasExtra:{cant:'',valor:cfg.diaExtra||'',ver:false},garage:{cant:'',valor:cfg.garage||'',ver:false},comida:{cant:'',valor:cfg.comida||'',ver:false},
     nafta:{monto:'',ver:false},ayudante:{cant:'',valor:cfg.ayudante||'',cobrar:true,ver:false},redondeo:1000,materiales:{},herramientas:{},compra:{},
+    estado:'',sena:{pct:cfg.senaPct==null?40:cfg.senaPct},pagos:[],
     aclaraciones:cfg.aclaraciones,img:{precios:'total',redImp:0,redM2:false,incluye:true,materiales:true,aclaraciones:true,oscuro:false},incluye:null,notas:''},f);
 }
 // Completa lo que falte. Lo que no tenga copia propia se toma de 'base' (los Ajustes de cuando se guardó).
@@ -358,11 +383,13 @@ function norm(b,base){
   if(!Array.isArray(b.herramientasLista))o.herramientasLista=f.herramientasLista;
   if(!(num(b.validez)>0))o.validez=f.validez;
   if(!b.emitido)o.emitido=null;
-  ['muebles','altura','reparacion','diasExtra','garage','comida','nafta','ayudante','img'].forEach(k=>{o[k]=Object.assign({},d[k],b[k]||{});});
+  ['muebles','altura','reparacion','diasExtra','garage','comida','nafta','ayudante','img','sena'].forEach(k=>{o[k]=Object.assign({},d[k],b[k]||{});});
   if(typeof o.img.precios!=='string')o.img.precios=o.img.precios?'detalle':'total';
   o.ambientes=(o.ambientes||[]).map(a=>({id:a.id||uid(),nombre:a.nombre||'',sups:(a.sups||[]).map(s=>Object.assign(nuevaSup(),s,{medidas:(s.medidas||[]).map(m=>Object.assign(nuevaMed(),m))}))}));
   o.extras=(o.extras||[]).map(e=>Object.assign({id:uid(),desc:'',monto:''},e));
   o.compra=(o.compra&&typeof o.compra==='object'&&!Array.isArray(o.compra))?o.compra:{};
+  o.estado=typeof o.estado==='string'?o.estado:'';
+  o.pagos=(Array.isArray(o.pagos)?o.pagos:[]).filter(p=>p&&typeof p==='object').map((p,i)=>Object.assign({id:uid(),n:i+1,fecha:hoyISO(),monto:'',concepto:'parcial',medio:''},p));
   o.materiales=(o.materiales&&typeof o.materiales==='object')?o.materiales:{}; o.herramientas=(o.herramientas&&typeof o.herramientas==='object')?o.herramientas:{};
   return o;
 }
@@ -432,6 +459,99 @@ function compra(b,c){
     const env=sizes.map((x,i)=>({s:x,n:man?Math.max(0,Math.round(num(e.env[x]))):auto[i]}));
     return Object.assign(o,{sizes,sug,litros,editado:tl!=='',manual:man,env,total:env.reduce((t,x)=>t+x.s*x.n,0)});
   }).filter(o=>o.litros>0.05||o.extra||o.manual);
+}
+// ---- Seña y cobros ----
+const CONC=[['sena','Seña'],['parcial','Pago parcial'],['saldo','Saldo final'],['total','Pago total']];
+const MEDIOS=['','Efectivo','Transferencia','Mercado Pago','Cheque'];
+const pctDe=(m,t)=>{if(!(t>0)||!(m>0))return ''; const x=m/t*100; return (Math.abs(x-Math.round(x))<0.05?String(Math.round(x)):x.toFixed(1).replace('.',','))+' %';};
+// Total del presupuesto, lo cobrado y el saldo; y por cada cobro, cuánto había antes y cuánto queda después.
+function cobros(b,c){
+  c=c||calc(b); const total=Math.round(c.total); let ac=0;
+  const filas=(b.pagos||[]).map(p=>{const m=Math.round(plata(p.monto)), antes=ac; ac+=m; return {p,monto:m,antes,despues:ac,saldo:total-ac};});
+  return {total,cobrado:ac,saldo:total-ac,sena:Math.round(total*num(b.sena.pct)/100),filas};
+}
+const nroRecibo=(b,p)=>nro(b.numero)+'-'+String(p.n||1).padStart(2,'0');
+// Las frases del recibo, armadas una sola vez para el PDF y para el texto.
+function recibo(b,p){
+  const k=cobros(b), f=k.filas.find(x=>x.p===p)||{monto:Math.round(plata(p.monto)),antes:0,despues:0,saldo:k.total}, pc=pctDe(f.monto,k.total);
+  const conc={sena:'seña'+(pc?', equivalente al '+pc+' del total':''),parcial:'pago parcial'+(pc?', equivalente al '+pc+' del total':''),saldo:'saldo final',total:'pago total'}[p.concepto]||'pago';
+  const cli=String(b.cliente||'').trim(), dir=String(b.direccion||'').trim();
+  const frase='Recibí'+(cli?' de '+cli:'')+' la suma de '+$(f.monto)+' (pesos '+enLetras(f.monto)+') en concepto de '+conc+' del presupuesto '+nro(b.numero)+', correspondiente a trabajos de pintura'+(dir?' en '+dir:'')+'.';
+  const cierre=f.saldo<=0&&k.total>0?'Con este pago queda cancelado el total del trabajo.':'';
+  return {k,f,pc,cli,dir,frase,cierre,num:nroRecibo(b,p),fecha:fechaLarga(p.fecha),titulo:(CONC.find(x=>x[0]===p.concepto)||CONC[1])[1]};
+}
+function textoRecibo(b,p){
+  const r=recibo(b,p), L=['*RECIBO '+r.num+'*',r.fecha,'',r.frase];
+  if(p.medio)L.push('Forma de pago: '+p.medio.toLowerCase()+'.');
+  L.push(''); L.push('Total del presupuesto: '+$(r.k.total)); if(r.f.antes>0)L.push('Cobrado anteriormente: '+$(r.f.antes));
+  L.push('Este pago: '+$(r.f.monto)); L.push(r.f.saldo>0?'*Saldo pendiente: '+$(r.f.saldo)+'*':r.f.saldo<0?'A favor del cliente: '+$(-r.f.saldo):'*Saldo pendiente: $0*');
+  if(r.cierre)L.push(r.cierre);
+  if(cfg.nombre){L.push(''); L.push(cfg.nombre);}
+  return L.join('\n');
+}
+// Recibo en imagen (después se guarda como PDF). Usa el mismo fondo que el presupuesto del cliente.
+function dibujarRecibo(b,p){
+  const r=recibo(b,p), W=1080, P=84, dark=b.img.oscuro;
+  const K=dark?{bg:'#000000',ink:'#F5F5F7',mut:'#98989D',line:'#38383A',hair:'#2C2C2E',soft:'#1C1C1E'}:{bg:'#FFFFFF',ink:'#1D1D1F',mut:'#6E6E73',line:'#D2D2D7',hair:'#E8E8ED',soft:'#F5F5F7'};
+  const FT='-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif', FD='-apple-system,"SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif';
+  function lay(ctx,draw){
+    let y=P+36;
+    const set=(f,col)=>{ctx.font=f; ctx.fillStyle=col;};
+    const T=(t,x,yy,al)=>{if(draw){ctx.textAlign=al||'left'; ctx.fillText(t,x,yy);}};
+    const rule=(yy,col,hgt,x,w)=>{if(draw){ctx.fillStyle=col||K.line; ctx.fillRect(x==null?P:x,yy,w==null?W-2*P:w,hgt||2);}};
+    const cap=(t,x,yy,al)=>{set('600 22px '+FT,K.mut); if(draw&&'letterSpacing' in ctx)ctx.letterSpacing='2.5px'; T(t.toUpperCase(),x,yy,al); if(draw&&'letterSpacing' in ctx)ctx.letterSpacing='0px';};
+    const lines=(t,maxW)=>{const o=[]; let l=''; for(const w of String(t).split(/\s+/)){const x=l?l+' '+w:w; if(ctx.measureText(x).width>maxW&&l){o.push(l);l=w;}else l=x;} if(l)o.push(l); return o;};
+    set('700 42px '+FD,K.ink); T(cfg.nombre||'Recibo de pago',P,y);
+    if(cfg.nombre)cap('Recibo de pago',W-P,y-8,'right');
+    y+=46; set('400 28px '+FT,K.mut); T(cfg.telefono||'Trabajos de pintura',P,y); T(r.num+' · '+r.fecha,W-P,y,'right');
+    y+=42; rule(y); y+=76;
+    if(r.cli){cap('Recibí de',P,y); y+=52; set('600 40px '+FD,K.ink); lines(r.cli,W-2*P).forEach(l=>{T(l,P,y); y+=50;}); if(r.dir){set('400 28px '+FT,K.mut); T(r.dir,P,y-6); y+=34;} y+=34;}
+    // Importe, en un recuadro
+    set('400 27px '+FT,K.mut); const letras=lines('Pesos '+enLetras(r.f.monto)+'.',W-2*P-96);
+    const bh=70+74+30+letras.length*38+44;
+    if(draw){ctx.fillStyle=K.soft; roundRect(ctx,P,y,W-2*P,bh,36);}
+    let yy=y+70; cap(r.titulo,P+48,yy);
+    yy+=84; set('700 76px '+FD,K.ink); T($(r.f.monto),P+48,yy);
+    yy+=52; set('400 27px '+FT,K.mut); letras.forEach(l=>{T(l,P+48,yy); yy+=38;});
+    y+=bh+72;
+    set('400 31px '+FT,K.ink); lines(r.frase,W-2*P).forEach(l=>{T(l,P,y); y+=46;});
+    if(p.medio){y+=10; set('400 31px '+FT,K.ink); T('Forma de pago: '+p.medio.toLowerCase()+'.',P,y); y+=46;}
+    y+=44; cap('Detalle',P,y); y+=24; rule(y); y+=60;
+    const fila=(a,v,bold)=>{set((bold?'600':'400')+' 31px '+FT,K.ink); T(a,P,y); T(v,W-P,y,'right'); y+=54;};
+    fila('Total del presupuesto '+nro(b.numero),$(r.k.total));
+    if(r.f.antes>0)fila('Cobrado anteriormente',$(r.f.antes));
+    fila('Este pago',$(r.f.monto),true);
+    y-=14; rule(y,K.ink,3); y+=66;
+    set('600 34px '+FT,K.ink); T(r.f.saldo<0?'A favor del cliente':'Saldo pendiente',P,y); set('600 44px '+FD,K.ink); T($(Math.abs(r.f.saldo)),W-P,y+2,'right'); y+=46;
+    if(r.cierre){set('400 26px '+FT,K.mut); T(r.cierre,P,y); y+=40;}
+    // Firma
+    y+=130; rule(y,K.line,2,W-P-380,380); y+=44;
+    set('600 28px '+FT,K.ink); T(cfg.nombre||'Firma',W-P-190,y,'center');
+    if(cfg.nombre){y+=34; set('400 24px '+FT,K.mut); T('Firma',W-P-190,y,'center');}
+    y+=84; set('400 24px '+FT,K.mut); T('Comprobante de pago. Documento no válido como factura.',P,y);
+    return y+P;
+  }
+  const H=Math.ceil(lay(document.createElement('canvas').getContext('2d'),false));
+  const E=Math.max(1,Math.min(2.5,Math.sqrt(15e6/(W*H))));
+  const cv=document.createElement('canvas'); cv.width=Math.round(W*E); cv.height=Math.round(H*E); const ctx=cv.getContext('2d'); ctx.scale(E,E);
+  ctx.fillStyle=K.bg; ctx.fillRect(0,0,W,H); ctx.textBaseline='alphabetic'; lay(ctx,true);
+  return cv;
+}
+// Se arman por adelantado: el iPhone solo deja compartir si el archivo ya está listo al tocar el botón.
+let reciboFiles={}, reciboT;
+function prepararRecibos(b){
+  clearTimeout(reciboT); reciboT=setTimeout(()=>{
+    const mine=reciboFiles={}; if(cur()!==b||S.tab!=='cobro')return;
+    b.pagos.forEach(p=>{if(!(plata(p.monto)>0))return; const cv=dibujarRecibo(b,p);
+      const nom='Recibo '+nroRecibo(b,p).replace('N° ','')+(b.cliente?' '+b.cliente.replace(/[\\/:*?"<>|]/g,''):'');
+      cv.toBlob(async bl=>{if(bl&&reciboFiles===mine)mine[p.id]=new File([armarPDF(new Uint8Array(await bl.arrayBuffer()),cv.width,cv.height)],nom+'.pdf',{type:'application/pdf'});},'image/jpeg',0.95);});
+  },350);
+}
+function compartirRecibo(p){
+  if(!(plata(p.monto)>0)){toast('Poné el monto del cobro'); return;}
+  const f=reciboFiles[p.id]; if(!f){toast('Un segundo, se está armando el recibo'); return;}
+  if(navigator.canShare&&navigator.canShare({files:[f]}))navigator.share({files:[f]}).catch(e=>{if(e&&e.name!=='AbortError')toast('No se pudo compartir');});
+  else descargar(f,false);
 }
 const tipoKey=n=>{const s=String(n||'Otro').trim(); return s.charAt(0).toUpperCase()+s.slice(1);};
 function calc(b){
@@ -604,7 +724,8 @@ function vLista(){
   const arr=[...list].sort((a,b)=>(b.actualizado||0)-(a.actualizado||0));
   if(!arr.length){m.append(h('div',{class:'empty'},h('b',null,'Sin presupuestos'),'Tocá + arriba a la derecha y empezá cargando las medidas del primer ambiente.'),h('div',{class:'stack'},h('button',{class:'pbtn',onclick:crear},svg(I.plus),'Nuevo presupuesto'),h('button',{class:'pbtn sec2',onclick:cargarEjemplo},'Ver un ejemplo')));return;}
   m.append(sec(null,arr.map(b=>{const c=calc(b); const ambs=b.ambientes.map(a=>a.nombre).filter(Boolean).join(', ');
-    const info=[h('div',{class:'t'},h('b',null,b.cliente||'Sin nombre'),h('span',{class:'s'},fechaC(b.actualizado||b.creado)+(ambs?' · '+ambs:''))),
+    const k=cobros(b,c), est=[b.estado==='terminado'?'Terminado':b.estado==='aceptado'?'Aceptado':'',k.cobrado>0?(k.saldo<=0?'Cobrado':'Cobrado '+$(k.cobrado)+' · saldo '+$(k.saldo)):''].filter(Boolean).join(' · ');
+    const info=[h('div',{class:'t'},h('b',null,b.cliente||'Sin nombre'),h('span',{class:'s'},fechaC(b.actualizado||b.creado)+(ambs?' · '+ambs:'')),est?h('span',{class:'s est'+(k.cobrado>0&&k.saldo<=0?' ok':'')},est):null),
       h('div',{class:'v num'},h('b',null,$(c.total)),h('span',null,f2(c.m2)+' m²'))];
     if(S.editList)return h('div',{class:'cell item'},info[0],h('button',{class:'delbtn',onclick:()=>eliminar(b)},'Eliminar'));
     const row=h('button',{class:'cell tap item',onclick:()=>{if(row._swiped)return; if(wrap.classList.contains('open')){wrap.classList.remove('open');return;} go('editor',{cur:b.id,tab:'medidas'});}},...info,svg(I.chev));
@@ -750,6 +871,31 @@ function tCobro(m,b){
     'Todo esto se SUMA al total del cliente, nunca se resta. Con «Que se vea» elegís si aparece escrito en el presupuesto; si está apagado igual se cobra, pero queda incluido en el total sin detallarlo.'));
   m.append(sec('Redondeo',[h('div',{class:'cell'},seg([[0,'Sin redondeo'],[1000,'$1.000'],[10000,'$10.000']],b.redondeo,v=>{b.redondeo=v;touch(true);},'Redondeo','full'))]));
   m.append(out(h('div'),el=>totales(el,b)));
+  tCobros(m,b);
+}
+function tCobros(m,b){
+  m.append(sec('Estado del trabajo',[h('div',{class:'cell'},seg([['','Pendiente'],['aceptado','Aceptado'],['terminado','Terminado']],b.estado||'',v=>{b.estado=v;touch(true);},'Estado del trabajo','full'))],b.emitido?'Presupuesto enviado el '+fecha(b.emitido)+'.':null));
+  const filas=[cell(h('label',{class:'t',for:b.id+'se-pct'},'Seña',out(h('span',{class:'s num'}),el=>{const k=cobros(b); el.textContent=k.sena?$(k.sena):'Sin seña';})),inp(b.sena,'pct',{cls:'box pc',mode:'numeric',label:'Porcentaje de seña',id:b.id+'se'}),h('span',{class:'v'},'%'))];
+  b.pagos.forEach((p,i)=>{
+    const cs=h('select',{'aria-label':'Concepto del cobro'},CONC.map(([v,t])=>h('option',{value:v},t))); cs.value=p.concepto; cs.addEventListener('change',()=>{p.concepto=cs.value;touch(true);});
+    const ms=h('select',{'aria-label':'Forma de pago'},MEDIOS.map(v=>h('option',{value:v},v||'Sin indicar'))); ms.value=p.medio||''; ms.addEventListener('change',()=>{p.medio=ms.value;touch(true);});
+    const fd=h('input',{type:'date',class:'box date','aria-label':'Fecha del cobro',value:p.fecha||hoyISO()}); fd.addEventListener('change',()=>{p.fecha=fd.value||hoyISO();touch(false);});
+    filas.push(h('div',{class:'cell col pago'},
+      h('div',{class:'pg1'},h('label',{class:'pick'},h('span',null,(CONC.find(x=>x[0]===p.concepto)||CONC[1])[1]),svg(I.updown),cs),inp(p,'monto',{cls:'box r',money:true,ph:'$',label:'Monto cobrado'}),
+        h('button',{class:'xbtn red','aria-label':'Borrar cobro',html:I.minus,onclick:()=>{b.pagos.splice(i,1); touch(true); toastAction('Se borró el cobro','Deshacer',()=>{b.pagos.splice(Math.min(i,b.pagos.length),0,p); touch(true);});}})),
+      h('div',{class:'pg2'},fd,h('label',{class:'pick'},h('span',null,p.medio||'Forma de pago'),svg(I.updown),ms)),
+      out(h('div',{class:'pg3 num'}),el=>{const k=cobros(b), f=k.filas[i]; if(!f||!f.monto){el.textContent='Poné el monto para armar el recibo.'; return;}
+        el.textContent=[pctDe(f.monto,k.total)?pctDe(f.monto,k.total)+' del total':'',f.saldo>0?'queda un saldo de '+$(f.saldo):f.saldo<0?'supera el total por '+$(-f.saldo):'queda todo cobrado'].filter(Boolean).join(' · ');}),
+      h('div',{class:'pg4'},h('button',{class:'lnk',onclick:()=>compartirRecibo(p)},'Compartir recibo (PDF)'),h('button',{class:'lnk',onclick:()=>{if(plata(p.monto)>0)copiar(textoRecibo(b,p)); else toast('Poné el monto del cobro');}},'Copiar texto'))));
+  });
+  filas.push(h('button',{class:'cell tap link',onclick:()=>{
+    const k=cobros(b), prim=!b.pagos.length, usaSena=prim&&k.sena>0&&k.sena<k.total, monto=usaSena?k.sena:Math.max(0,k.saldo);
+    const p={id:uid(),n:b.pagos.reduce((t,x)=>Math.max(t,num(x.n)),0)+1,fecha:hoyISO(),monto:monto?fmtMoney(String(monto)):'',concepto:usaSena?'sena':prim?'total':'saldo',medio:''};
+    b.pagos.push(p); if(!b.estado)b.estado='aceptado'; focusId=p.id+'-monto'; touch(true);}},'Registrar un cobro'));
+  m.append(sec('Seña y cobros',filas,'Cada cobro arma su recibo: dice la fecha, el monto en números y en letras, el concepto y el saldo que queda. El % de seña por defecto se cambia en Ajustes.'));
+  m.append(out(h('div'),el=>{const k=cobros(b); el.innerHTML=''; if(!b.pagos.length)return;
+    const g=h('div',{class:'group'}); g.append(kv('Total del presupuesto',$(k.total)),kv('Cobrado',$(k.cobrado)),kv(k.saldo<0?'A favor del cliente':'Saldo pendiente',$(Math.abs(k.saldo)),k.saldo<=0?'good':'tot'));
+    el.append(h('div',{class:'sec'},h('div',{class:'sec-h'},'Cuenta con el cliente'),g)); prepararRecibos(b);}));
 }
 function totales(el,b){
   const c=calc(b); el.innerHTML='';
@@ -1152,7 +1298,7 @@ function vAjustes(){
   const F=(lab,key,o)=>cell(h('label',{class:'t',for:'cfg-'+key},lab),inp(cfg,key,Object.assign({cfg:true,id:'cfg',cls:'box r'},o||{})));
   m.append(sec('Tus datos',[F('Nombre','nombre',{mode:'text',ph:'Tu nombre',cls:'tf'}),F('Teléfono','telefono',{mode:'tel',ph:'Opcional',cls:'tf'})],'Aparecen arriba del presupuesto que le mandás al cliente.'));
   const rep=cell(h('span',{class:'t'},'% reparaciones',h('span',{class:'s'},'Leve · media · mucha')),...[1,2,3].map(i=>{const e=h('input',{class:'box pc',inputmode:'numeric',id:'cfg-rep'+i,value:String(cfg.recRep[i]??''),'aria-label':'Reparaciones '+NIVELES[i]}); e.addEventListener('input',()=>{cfg.recRep[i]=num(e.value);touchCfg(false);}); return e;}));
-  m.append(sec('Precios',[F('m² con 2 manos','precioM2',{money:true}),F('m² cielorraso (2 manos)','precioCielo',{money:true}),F('Metro lineal zócalo','precioMl',{money:true}),F('% mover muebles','recMuebles',{mode:'numeric'}),F('% trabajo en altura','recAltura',{mode:'numeric'}),rep,F('Validez del presupuesto (días)','validezDias',{mode:'numeric'})],'Se usan en los presupuestos nuevos; los que ya hiciste guardan sus propios precios. Con 1, 3 o 4 manos el precio se ajusta en proporción.'));
+  m.append(sec('Precios',[F('m² con 2 manos','precioM2',{money:true}),F('m² cielorraso (2 manos)','precioCielo',{money:true}),F('Metro lineal zócalo','precioMl',{money:true}),F('% mover muebles','recMuebles',{mode:'numeric'}),F('% trabajo en altura','recAltura',{mode:'numeric'}),rep,F('Validez del presupuesto (días)','validezDias',{mode:'numeric'}),F('% de seña','senaPct',{mode:'numeric'})],'Se usan en los presupuestos nuevos; los que ya hiciste guardan sus propios precios. Con 1, 3 o 4 manos el precio se ajusta en proporción.'));
   const pzs=cfg.piezas.map((p,i)=>cell(inp(p,'nombre',{mode:'text',cfg:true,id:'pz'+i,cls:'tf left',label:'Nombre del trabajo',ph:'Ej: Puerta con marco'}),(e=>{e.addEventListener('input',()=>e.classList.toggle('falta',!plata(e.value))); return e;})(inp(p,'precio',{cfg:true,id:'pz'+i,cls:'box r'+(plata(p.precio)?'':' falta'),money:true,label:'Precio '+p.nombre})),h('button',{class:'xbtn red','aria-label':'Quitar trabajo',html:I.minus,onclick:()=>{cfg.piezas.splice(i,1);touchCfg(true);}})));
   pzs.push(h('button',{class:'cell tap link',onclick:()=>{cfg.piezas.push({id:uid(),nombre:'',precio:0}); focusId='pz'+(cfg.piezas.length-1)+'-nombre'; touchCfg(true);}},'Agregar trabajo'));
   m.append(sec('Esmalte sintético por pieza',pzs,cfg.piezas.some(p=>!plata(p.precio))?'Son precios sugeridos: aparecen solos al elegir el trabajo en Medidas, y ahí los podés cambiar. Los que están en rojo están en $0.':'Son precios sugeridos: aparecen solos al elegir el trabajo en Medidas, y ahí los podés cambiar.'));
@@ -1175,18 +1321,85 @@ function vAjustes(){
     h('button',{class:'cell tap link',onclick:exportar},'Exportar copia'),
     h('button',{class:'cell tap link',onclick:()=>fileIn.click()},'Recuperar desde una copia')],
     (meta.lastBackup?'Última copia: '+fecha(meta.lastBackup)+'. ':'Todavía no hiciste ninguna copia. ')+'Tus presupuestos están solo en este aparato: si borrás el ícono de la app, se borran. Guardá la copia en Archivos, iCloud o mandátela por WhatsApp. En la compu también podés arrastrar la copia sobre la app.'));
+  m.append(sec(null,[h('button',{class:'cell tap link',onclick:actualizarAhora},'Buscar actualización')],'La app se actualiza sola al abrirla, cuando hay internet. Este botón es por si querés revisar en el momento.'));
   m.append(h('div',{class:'sec-f',style:'text-align:center;padding-top:24px'},'Presupuestos '+VERSION+' · funciona sin internet'));
 }
 
 /* ---------- arranque ---------- */
 load();
+// Si la app se acaba de actualizar sola, vuelve a la misma pantalla donde estabas.
+let volvio=null;
+try{const e=JSON.parse(sessionStorage.getItem('upd-estado')||'null'); sessionStorage.removeItem('upd-estado');
+  if(e){volvio=e; if(e.view==='ajustes')S.view='ajustes'; else if(e.view==='editor'&&list.some(b=>b.id===e.cur))Object.assign(S,{view:'editor',cur:e.cur,tab:e.tab||'medidas'});}}catch(e){}
 S.keepScroll=false; render();
-if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
-  navigator.serviceWorker.register('sw.js').then(reg=>{
-    reg.addEventListener('updatefound',()=>{const w=reg.installing; if(!w)return; w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)toast('Hay una versión nueva: cerrá y volvé a abrir la app');});});
+if(volvio){window.scrollTo(0,volvio.y||0); if(volvio.de!==VERSION)toast('App actualizada a la versión '+VERSION);}
+
+/* ---------- actualización automática ----------
+   La app queda guardada en el teléfono para abrir sin internet. Cada vez que la abrís o volvés a ella
+   se fija si hay una versión más nueva publicada. Si la hay, la baja, la guarda y se recarga sola
+   (en la misma pantalla, sin perder nada). No hay que cerrar ni volver a abrir. */
+const UPD={pref:'presupuestos-',visto:0,lista:null,toco:0,desde:Date.now(),corriendo:false,etag:null};
+const vnum=v=>String(v).split('.').map(n=>parseInt(n,10)||0);
+const vMayor=(a,b)=>{const x=vnum(a),y=vnum(b); for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0); if(d)return d>0;} return false;};
+['pointerdown','keydown','input'].forEach(ev=>document.addEventListener(ev,()=>{UPD.toco=Date.now();},{capture:true,passive:true}));
+function recargarNueva(){
+  if(!UPD.lista)return;
+  try{saveNow(); sessionStorage.setItem('upd-estado',JSON.stringify({view:S.view,cur:S.cur,tab:S.tab,y:window.scrollY,de:VERSION}));
+    sessionStorage.setItem('upd-intento',JSON.stringify({v:UPD.lista,t:Date.now()}));}catch(e){}
+  location.reload();
+}
+// Se recarga sola si no estás en medio de algo: recién abierta, o 20 segundos sin tocar nada y sin estar escribiendo.
+// Si estás cargando datos espera; a más tardar se aplica la próxima vez que entres.
+function aplicarNueva(){
+  if(!UPD.lista)return;
+  const a=document.activeElement, escribiendo=!!(a&&a.matches&&a.matches('input,textarea,select'));
+  if(UPD.toco<UPD.desde||(!escribiendo&&Date.now()-UPD.toco>20000))recargarNueva();
+}
+// Devuelve 'nueva' (ya quedó guardada), 'igual' o 'error'.
+async function buscarVersion(forzar){
+  if(UPD.lista)return 'nueva';
+  if(UPD.corriendo)return 'error';
+  if(!('caches' in window)||navigator.onLine===false)return 'error';
+  if(!forzar&&Date.now()-UPD.visto<60000)return 'igual';
+  UPD.corriendo=true; UPD.visto=Date.now();
+  try{
+    const u='./index.html?u='+Date.now();
+    // Primero pregunta solo si el archivo cambió (casi no gasta datos); lo baja entero únicamente si cambió.
+    if(UPD.etag&&!forzar){const hd=await fetch(u,{method:'HEAD',cache:'no-store'}); if(hd.ok&&hd.headers.get('etag')===UPD.etag)return 'igual';}
+    const r=await fetch(u,{cache:'no-store'}); if(!r.ok)return 'error';
+    const txt=await r.text(), m=txt.match(/const VERSION='([\d.]+)'/);
+    if(!m||txt.length<20000||!/<\/html>\s*$/.test(txt))return 'error';
+    if(!vMayor(m[1],VERSION)){if(m[1]===VERSION)UPD.etag=r.headers.get('etag'); return 'igual';}
+    // Si ya se intentó con esta versión hace poco y no quedó, no insiste enseguida (evita recargas en cadena).
+    let it=null; try{it=JSON.parse(sessionStorage.getItem('upd-intento')||'null');}catch(e){}
+    if(!forzar&&it&&it.v===m[1]&&Date.now()-it.t<600000)return 'igual';
+    const ks=(await caches.keys()).filter(k=>k.startsWith(UPD.pref)); if(!ks.length)return 'error';
+    await Promise.all(ks.map(k=>caches.open(k).then(c=>c.put('./index.html',new Response(txt,{headers:{'Content-Type':'text/html; charset=utf-8'}})))));
+    UPD.lista=m[1]; return 'nueva';
+  }catch(e){return 'error';}finally{UPD.corriendo=false;}
+}
+const swOk='serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1');
+async function revisarVersion(forzar){
+  if(!swOk)return 'error';
+  navigator.serviceWorker.getRegistration().then(r=>r&&r.update()).catch(()=>{});
+  const x=await buscarVersion(forzar); if(x==='nueva')aplicarNueva(); return x;
+}
+// Botón de Ajustes: busca ahora mismo y, si hay versión nueva, la pone.
+async function actualizarAhora(){
+  toast('Buscando versión nueva…');
+  const x=await revisarVersion(true);
+  if(x==='nueva')recargarNueva(); else toast(x==='igual'?'Ya tenés la última versión ('+VERSION+')':'No se pudo revisar. Fijate si hay internet.');
+}
+if(swOk){
+  navigator.serviceWorker.register('sw.js').then(()=>{
+    navigator.serviceWorker.ready.then(()=>setTimeout(()=>revisarVersion(true),600));
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden){UPD.desde=Date.now(); revisarVersion(false);}});
+    window.addEventListener('pageshow',e=>{if(e.persisted){UPD.desde=Date.now(); revisarVersion(false);}});
+    window.addEventListener('online',()=>revisarVersion(false));
+    let n=0; setInterval(()=>{if(document.hidden)return; if(UPD.lista)aplicarNueva(); else if(++n%30===0)revisarVersion(false);},20000);
   }).catch(()=>{});
 }
-window.__calc=calc; window.__norm=norm; window.__texto=textoWpp; window.__compra=compra; window.__textoCompra=textoCompra; window.__dibujar=dibujar; window.__migrar=migrar;
+window.__calc=calc; window.__norm=norm; window.__letras=enLetras; window.__upd=UPD; window.__revisar=revisarVersion; window.__texto=textoWpp; window.__compra=compra; window.__textoCompra=textoCompra; window.__dibujar=dibujar; window.__migrar=migrar;
 })();
 </script>
 </body>
